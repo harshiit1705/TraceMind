@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"inverse-on-surface":"#eaf1ff","surface-bright":"#f8f9ff","tertiary-fixed":"#dbe1ff","on-tertiary":"#ffffff","on-tertiary-container":"#d1daff","on-secondary-container":"#5c647a","surface-container-high":"#dce9ff","primary":"#3525cd","error-container":"#ffdad6","on-tertiary-fixed-variant":"#003ea8","on-primary-fixed-variant":"#3323cc","on-secondary":"#ffffff","on-secondary-fixed":"#131b2e","surface-tint":"#4d44e3","on-primary-fixed":"#0f0069","surface":"#f8f9ff","primary-fixed-dim":"#c3c0ff","surface-container-highest":"#d3e4fe","inverse-primary":"#c3c0ff","secondary-fixed":"#dae2fd","on-background":"#0b1c30","tertiary-container":"#0555dd","on-surface-variant":"#464555","outline":"#777587","surface-container-low":"#eff4ff","error":"#ba1a1a","on-secondary-fixed-variant":"#3f465c","secondary":"#565e74","tertiary-fixed-dim":"#b4c5ff","on-error-container":"#93000a","primary-fixed":"#e2dfff","on-tertiary-fixed":"#00174b","secondary-fixed-dim":"#bec6e0","surface-variant":"#d3e4fe","secondary-container":"#dae2fd","surface-dim":"#cbdbf5","on-error":"#ffffff","surface-container":"#e5eeff","inverse-surface":"#213145","on-primary-container":"#dad7ff","on-surface":"#0b1c30","background":"#f8f9ff","surface-container-lowest":"#ffffff","on-primary":"#ffffff","outline-variant":"#c7c4d8","primary-container":"#4f46e5","tertiary":"#003fac"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"space-xs":"0.25rem","space-xl":"1.5rem","margin":"1rem","space-sm":"0.5rem","space-2xl":"2rem","space-md":"0.75rem","gutter":"1rem","space-xxs":"0.125rem","margin-desktop":"1.5rem","gutter-desktop":"1.5rem","space-lg":"1rem"},"fontFamily":{"body-default":["Inter"],"caption-ui":["Inter"],"display-lg-mobile":["Inter"],"body-medium":["Inter"],"mono-metric-lg":["JetBrains Mono"],"headline-md":["Inter"],"headline-sm":["Inter"],"title-md":["Inter"],"display-lg":["Inter"],"mono-badge":["JetBrains Mono"],"mono-body":["JetBrains Mono"],"mono-caption":["JetBrains Mono"]},"fontSize":{"body-default":["13px",{"lineHeight":"18px","letterSpacing":"0em","fontWeight":"400"}],"caption-ui":["11px",{"lineHeight":"14px","letterSpacing":"0.01em","fontWeight":"500"}],"display-lg-mobile":["26px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"600"}],"body-medium":["13px",{"lineHeight":"18px","letterSpacing":"0em","fontWeight":"500"}],"mono-metric-lg":["24px",{"lineHeight":"28px","letterSpacing":"-0.02em","fontWeight":"500"}],"headline-md":["24px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"600"}],"headline-sm":["18px",{"lineHeight":"24px","letterSpacing":"-0.01em","fontWeight":"600"}],"title-md":["15px",{"lineHeight":"20px","letterSpacing":"-0.005em","fontWeight":"600"}],"display-lg":["32px",{"lineHeight":"40px","letterSpacing":"-0.02em","fontWeight":"600"}],"mono-badge":["10px",{"lineHeight":"12px","letterSpacing":"0.02em","fontWeight":"500"}],"mono-body":["12px",{"lineHeight":"18px","letterSpacing":"0em","fontWeight":"400"}],"mono-caption":["11px",{"lineHeight":"14px","letterSpacing":"0em","fontWeight":"400"}]}}}}</script></head><body class="bg-background font-body-default text-body-default text-on-surface antialiased selection:bg-primary-fixed selection:text-on-primary-fixed"><aside class="fixed left-0 top-0 h-full w-60 bg-surface-container-lowest border-r border-outline-variant/30 z-50 flex flex-col justify-between select-none"><div class="flex flex-col"><div class="h-14 px-space-md border-b border-outline-variant/20 flex items-center justify-between"><div class="flex items-center gap-space-sm"><img alt="TraceMind Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1UVTcyxSQhLaLXC8YEGB5jlKXtc0o283iG2tZtiB3UDRgKcaAXDnM-qGjWXFp7CGlq2KYdcpYKLcINtTr7VWkkrEG3oxkaAioVCX8oLDPR19gPbMwmTK1VQHue1P-yF2p16Au1ciOaPIz8AzfpOweEJtxBecrf9zwz5GbUW88GpQANuLrLup83cThVN0GkgrodMiWUvdDamxGUKUkTJ-jaeLRYh9z5R78OiPpbSMbsT"/><span class="font-title-md text-title-md tracking-tight text-on-surface font-semibold">TraceMind</span></div><span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium uppercase tracking-wider">PROD</span></div><div class="px-space-md py-space-sm"><span class="font-caption-ui text-caption-ui text-outline uppercase tracking-wider font-semibold block px-space-xs mb-space-xxs">Telemetry &amp; Ops</span><nav class="flex flex-col gap-0.5" data-active-classes="bg-surface-container-high text-primary font-semibold shadow-[inset_3px_0_0_0_#3525cd]"><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="overview" href="#"><span class="font-body-medium text-body-medium">Overview</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="services" href="#"><span class="font-body-medium text-body-medium">Services</span><span class="font-mono-badge text-mono-badge px-1.5 py-0.2 bg-surface-container text-secondary rounded">42</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="dependency-map" href="#"><span class="font-body-medium text-body-medium">Dependency Map</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="incidents" href="#"><span class="font-body-medium text-body-medium">Incidents</span><span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded-full bg-error text-on-error font-medium">3</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="ai-investigation-center" href="#"><span class="font-body-medium text-body-medium">AI Investigations</span><span class="font-mono-badge text-mono-badge px-1.5 py-0.2 bg-primary-fixed text-on-primary-fixed-variant rounded font-medium">beta</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="traces" href="#"><span class="font-body-medium text-body-medium">Traces</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="logs" href="#"><span class="font-body-medium text-body-medium">Logs</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="reports-postmortems" href="#"><span class="font-body-medium text-body-medium">Reports &amp; Postmortems</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="settings" href="#"><span class="font-body-medium text-body-medium">Settings</span></a></nav></div></div><div class="p-space-sm border-t border-outline-variant/20 flex flex-col gap-space-xs bg-surface-container-lowest"><div class="p-space-xs rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer flex items-center justify-between"><div class="flex items-center gap-space-xs overflow-hidden"><span class="material-symbols-outlined text-[18px] text-secondary flex-shrink-0">corporate_fare</span><div class="flex flex-col truncate"><span class="font-caption-ui text-caption-ui text-on-surface font-semibold truncate">Acme Cloud Infra</span><span class="font-mono-caption text-mono-caption text-outline truncate">org-prod-us-east-1</span></div></div><span class="material-symbols-outlined text-[16px] text-outline">unfold_more</span></div><div class="pt-space-xs border-t border-outline-variant/10 flex items-center justify-between px-space-xs"><div class="flex items-center gap-space-xs"><div class="relative"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDo3kLijSZYHG5cklsGlhEVl_33IIW292avLA7wa-RCbLUCsSUFxVQF2ftjV4jKanAPJKsZ6sdledYPP9tsB59Q8De1l3X82IBf9uph5-xhfaeyTxRMsD6-rBBq_W3nLyf94cjxvvPvNDc8nGHpihNP30MceWPvzNJhk6tknmn2DkFiBYkcQ241_pSVrkMi89gwgKFkK1hOe_g9xida9GS2X2pnK6k29JwiDBggBoI"/><span class="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-primary ring-2 ring-surface-container-lowest"></span></div><div class="flex flex-col"><span class="font-caption-ui text-caption-ui text-on-surface font-semibold leading-tight">Alex Chen</span><span class="font-mono-caption text-mono-caption text-outline leading-tight">Staff SRE</span></div></div><a class="text-outline hover:text-on-surface p-1 rounded hover:bg-surface-container transition-colors" data-path="settings" href="#" title="Settings"><span class="material-symbols-outlined text-[18px]">keyboard_command_key</span></a></div></div></aside><div class="pl-60"><header class="fixed top-0 left-60 right-0 h-14 bg-surface-container-lowest/95 backdrop-blur-md border-b border-outline-variant/25 z-40 flex items-center justify-between px-space-lg shadow-[0_1px_4px_rgba(11,28,48,0.03)]"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-xs bg-surface-container-low px-space-sm py-1 rounded-lg border border-outline-variant/30 cursor-pointer hover:bg-surface-container transition-colors"><span class="material-symbols-outlined text-[16px] text-primary">folder_open</span><span class="font-body-medium text-body-medium text-on-surface font-medium">Core E-Commerce &amp; Payments</span><span class="material-symbols-outlined text-[16px] text-outline">expand_more</span></div><div class="flex items-center gap-1.5 px-space-xs py-1 rounded bg-secondary-container/40 border border-secondary-container text-on-secondary-fixed text-caption-ui font-caption-ui cursor-pointer hover:bg-secondary-container/70 transition-colors"><span class="w-1.5 h-1.5 rounded-full bg-primary"></span><span>Production</span><span class="material-symbols-outlined text-[14px] text-on-secondary-fixed-variant">arrow_drop_down</span></div><div class="h-4 w-px bg-outline-variant/30"></div><div class="flex items-center gap-space-xs text-on-surface-variant font-mono-body text-mono-body bg-surface-container-low px-space-sm py-1 rounded-lg border border-outline-variant/30 cursor-pointer hover:bg-surface-container transition-colors"><span class="material-symbols-outlined text-[16px] text-secondary">schedule</span><span>Last 15 minutes</span><span class="inline-flex items-center gap-1 ml-1 pl-1.5 border-l border-outline-variant/30 text-on-tertiary-fixed-variant text-mono-caption font-mono-caption"><span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span>30s</span></div></div><div class="flex items-center gap-space-md flex-1 max-w-lg mx-space-lg"><div class="relative w-full"><span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[18px] text-outline">search</span><input class="w-full h-8 pl-9 pr-14 bg-surface text-on-surface placeholder:text-outline border border-outline-variant/40 rounded-lg text-body-default font-body-default focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all" placeholder="Search traces, span IDs, services, logs (Cmd+K)" type="text"/><kbd class="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-mono-caption font-mono-caption text-outline bg-surface-container border border-outline-variant/30 rounded">⌘K</kbd></div></div><div class="flex items-center gap-space-sm"><div class="relative"><button class="relative p-1.5 rounded-lg text-secondary hover:text-on-surface hover:bg-surface-container transition-colors" type="button"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-1 right-1 flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-error"></span></span></button></div><div class="flex items-center gap-1 px-2 py-1 rounded-full bg-error-container text-on-error-container text-mono-caption font-mono-caption border border-error/20"><span class="w-1.5 h-1.5 rounded-full bg-error"></span><span>2 critical</span></div><div class="h-4 w-px bg-outline-variant/30 mx-1"></div><div class="relative cursor-pointer"><img alt="Profile" class="w-8 h-8 rounded-full object-cover ring-1 ring-outline-variant/40" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDo3kLijSZYHG5cklsGlhEVl_33IIW292avLA7wa-RCbLUCsSUFxVQF2ftjV4jKanAPJKsZ6sdledYPP9tsB59Q8De1l3X82IBf9uph5-xhfaeyTxRMsD6-rBBq_W3nLyf94cjxvvPvNDc8nGHpihNP30MceWPvzNJhk6tknmn2DkFiBYkcQ241_pSVrkMi89gwgKFkK1hOe_g9xida9GS2X2pnK6k29JwiDBggBoI"/><span class="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-primary ring-2 ring-surface-container-lowest"></span></div></div></header><main class="relative pt-14 bg-background min-h-screen"><div class="flex flex-col w-full">
+<!-- Interactive & State Handlers -->
+<script>
+    function selectIncidentRow(rowId) {
+      document.querySelectorAll('.incident-row').forEach(row => {
+        row.classList.remove('bg-secondary-container/40', 'font-medium');
+        row.classList.add('bg-surface-container-lowest');
+      });
+      const active = document.getElementById(rowId);
+      if(active) {
+        active.classList.add('bg-secondary-container/40', 'font-medium');
+        active.classList.remove('bg-surface-container-lowest');
+      }
+    }
+
+    function toggleExportMenu() {
+      const menu = document.getElementById('export-dropdown');
+      if (menu) {
+        menu.classList.toggle('hidden');
+      }
+    }
+
+    function simulateDraftGeneration() {
+      const btn = document.getElementById('gen-postmortem-btn');
+      if (btn) {
+        btn.innerHTML = `<span class="material-symbols-outlined text-[16px] animate-spin">sync</span> Analyzing telemetry spans...`;
+        setTimeout(() => {
+          btn.innerHTML = `<span class="material-symbols-outlined text-[16px]">check_circle</span> Draft Ready (AI Scribe)`;
+          setTimeout(() => {
+            btn.innerHTML = `<span class="material-symbols-outlined text-[16px]">add_circle</span> Generate New Postmortem`;
+          }, 3000);
+        }, 1200);
+      }
+    }
+  </script>
+<!-- Top Action & Overview Area -->
+<div class="px-space-xl py-space-lg flex flex-col gap-space-lg">
+<!-- Header Block -->
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md">
+<div class="flex flex-col gap-space-xxs">
+<div class="flex items-center gap-space-xs">
+<span class="font-display-lg text-display-lg text-on-surface font-semibold tracking-tight">Reports &amp; Postmortems</span>
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed font-medium">RELIABILITY HQ</span>
+</div>
+<p class="font-body-default text-body-default text-on-surface-variant max-w-2xl">
+          Engineering reliability analysis, system outage retrospectives, autonomous incident diagnostics, and continuous SLO trend reporting.
+        </p>
+</div>
+<!-- Action Cluster -->
+<div class="flex flex-wrap items-center gap-space-xs">
+<div class="flex items-center gap-1.5 px-space-sm py-1.5 rounded-lg bg-surface-container-lowest shadow-sm text-on-surface font-mono-body text-mono-body cursor-pointer hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-[16px] text-secondary">date_range</span>
+<span>Last 30 Days</span>
+<span class="material-symbols-outlined text-[16px] text-outline">expand_more</span>
+</div>
+<div class="relative">
+<button class="flex items-center gap-1.5 px-space-sm py-1.5 rounded-lg bg-surface-container-lowest shadow-sm text-on-surface font-body-medium text-body-medium hover:bg-surface-container-low transition-colors" onclick="toggleExportMenu()" type="button">
+<span class="material-symbols-outlined text-[16px] text-secondary">download</span>
+<span>Export (PDF/CSV)</span>
+</button>
+<div class="hidden absolute right-0 mt-1 w-44 bg-surface-container-lowest rounded-lg shadow-md z-30 py-1 text-on-surface" id="export-dropdown">
+<a class="flex items-center gap-2 px-space-sm py-1.5 text-body-default hover:bg-surface-container-low" href="#">
+<span class="material-symbols-outlined text-[16px] text-primary">picture_as_pdf</span> PDF Executive Summary
+            </a>
+<a class="flex items-center gap-2 px-space-sm py-1.5 text-body-default hover:bg-surface-container-low" href="#">
+<span class="material-symbols-outlined text-[16px] text-secondary">table_view</span> Full Raw Telemetry (.CSV)
+            </a>
+</div>
+</div>
+<button class="flex items-center gap-1.5 px-space-md py-1.5 rounded-lg bg-primary text-on-primary font-body-medium text-body-medium shadow-sm hover:opacity-95 active:scale-[0.99] transition-all" id="gen-postmortem-btn" onclick="simulateDraftGeneration()" type="button">
+<span class="material-symbols-outlined text-[16px]">add_circle</span>
+<span>Generate New Postmortem</span>
+</button>
+</div>
+</div>
+<!-- 4-Card Compact Reliability Metrics Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
+<!-- Metric 1: Total Incidents -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-caption-ui text-caption-ui text-on-surface-variant uppercase tracking-wider font-semibold">Total Incidents (30d)</span>
+<span class="material-symbols-outlined text-[18px] text-secondary">emergency</span>
+</div>
+<div class="flex items-baseline gap-space-xs mt-2">
+<span class="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold">14</span>
+<span class="font-mono-caption text-mono-caption text-secondary">events tracked</span>
+</div>
+<div class="flex items-center gap-1.5 mt-2.5 pt-2 bg-surface-container-low/50 px-2 py-1 rounded">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-error text-on-error font-medium">3 Critical</span>
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-secondary-container text-on-secondary-fixed font-medium">5 High</span>
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">6 Medium</span>
+</div>
+</div>
+<!-- Metric 2: MTTD -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-caption-ui text-caption-ui text-on-surface-variant uppercase tracking-wider font-semibold">Mean Time to Detect (MTTD)</span>
+<span class="material-symbols-outlined text-[18px] text-tertiary">radar</span>
+</div>
+<div class="flex items-baseline gap-space-xs mt-2">
+<span class="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold">1m 42s</span>
+<span class="font-mono-caption text-mono-caption text-primary flex items-center font-medium">
+<span class="material-symbols-outlined text-[14px]">arrow_downward</span> 24s vs last mo
+          </span>
+</div>
+<div class="flex items-center justify-between mt-2.5 text-mono-caption font-mono-caption text-on-surface-variant">
+<span>Target SLA: &lt; 2m 30s</span>
+<span class="text-tertiary font-medium">Within Target</span>
+</div>
+</div>
+<!-- Metric 3: MTTR -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-caption-ui text-caption-ui text-on-surface-variant uppercase tracking-wider font-semibold">Mean Time to Resolve (MTTR)</span>
+<span class="material-symbols-outlined text-[18px] text-primary">timer</span>
+</div>
+<div class="flex items-baseline gap-space-xs mt-2">
+<span class="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold">18m 10s</span>
+<span class="font-mono-caption text-mono-caption text-primary flex items-center font-medium">
+<span class="material-symbols-outlined text-[14px]">arrow_downward</span> 4m 15s imprv
+          </span>
+</div>
+<div class="flex items-center justify-between mt-2.5 text-mono-caption font-mono-caption text-on-surface-variant">
+<span>Target SLA: &lt; 30m 00s</span>
+<span class="text-primary font-medium">94.2% on-time</span>
+</div>
+</div>
+<!-- Metric 4: SLO Compliance -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<span class="font-caption-ui text-caption-ui text-on-surface-variant uppercase tracking-wider font-semibold">System SLO Compliance</span>
+<span class="material-symbols-outlined text-[18px] text-error">monitoring</span>
+</div>
+<div class="flex items-baseline gap-space-xs mt-2">
+<span class="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold">99.94%</span>
+<span class="font-mono-caption text-mono-caption text-error font-medium">
+            -0.01% breach
+          </span>
+</div>
+<div class="flex items-center justify-between mt-2.5 text-mono-caption font-mono-caption text-on-surface-variant">
+<span>Target: 99.95%</span>
+<span class="text-error font-medium">Caused by INC-8492</span>
+</div>
+</div>
+</div>
+<!-- Main Diagnostic Workbench: Split Ledger & Report Sheet View -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-lg items-start">
+<!-- Left Column (5 Cols on XL): Historical Log Table -->
+<div class="xl:col-span-5 flex flex-col gap-space-md">
+<div class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
+<div class="px-space-md py-space-sm bg-surface-container-low flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[18px] text-secondary">history</span>
+<span class="font-title-md text-title-md text-on-surface">Incident History</span>
+</div>
+<span class="font-mono-caption text-mono-caption text-secondary">Showing recent 4</span>
+</div>
+<!-- Incident Rows -->
+<div class="divide-y-0 flex flex-col">
+<!-- INC-8492 (Active) -->
+<div class="incident-row bg-secondary-container/40 p-space-md cursor-pointer transition-colors hover:bg-secondary-container/60 flex flex-col gap-2" id="row-8492" onclick="selectIncidentRow('row-8492')">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-mono-body text-mono-body font-semibold text-primary">INC-8492</span>
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-error text-on-error font-semibold flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-on-error animate-ping"></span>
+                    CRITICAL
+                  </span>
+</div>
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed font-medium">IN REVIEW (80%)</span>
+</div>
+<p class="font-body-medium text-body-medium text-on-surface font-medium leading-snug">
+                Aurora DB connection pool saturation &amp; cascading checkout timeouts
+              </p>
+<div class="flex items-center justify-between pt-1 text-mono-caption font-mono-caption text-secondary">
+<div class="flex items-center gap-2">
+<span>Duration: 16m 42s</span>
+<span>•</span>
+<span>Today 14:35 UTC</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface">
+<span class="material-symbols-outlined text-[14px] text-primary">person</span>
+<span>Alex Chen</span>
+</div>
+</div>
+</div>
+<!-- INC-8488 -->
+<div class="incident-row bg-surface-container-lowest p-space-md cursor-pointer transition-colors hover:bg-surface-container-low flex flex-col gap-2" id="row-8488" onclick="selectIncidentRow('row-8488')">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-mono-body text-mono-body font-semibold text-on-surface">INC-8488</span>
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">
+                    MEDIUM
+                  </span>
+</div>
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-surface-container-low text-secondary font-medium">PUBLISHED</span>
+</div>
+<p class="font-body-default text-body-default text-on-surface leading-snug">
+                Kafka consumer lag threshold exceeded on topic <code class="bg-surface-container px-1 py-0.5 rounded text-mono-caption font-mono-caption">order-events</code>
+</p>
+<div class="flex items-center justify-between pt-1 text-mono-caption font-mono-caption text-secondary">
+<div class="flex items-center gap-2">
+<span>Duration: 54m 00s</span>
+<span>•</span>
+<span>Today 14:34 UTC</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface">
+<span class="material-symbols-outlined text-[14px] text-secondary">person</span>
+<span>Maria Vance</span>
+</div>
+</div>
+</div>
+<!-- INC-8485 -->
+<div class="incident-row bg-surface-container-lowest p-space-md cursor-pointer transition-colors hover:bg-surface-container-low flex flex-col gap-2" id="row-8485" onclick="selectIncidentRow('row-8485')">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-mono-body text-mono-body font-semibold text-on-surface">INC-8485</span>
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-secondary-container text-on-secondary-fixed font-medium">
+                    HIGH
+                  </span>
+</div>
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-surface-container-low text-secondary font-medium">PUBLISHED</span>
+</div>
+<p class="font-body-default text-body-default text-on-surface leading-snug">
+                Memory leak in worker container group <code class="bg-surface-container px-1 py-0.5 rounded text-mono-caption font-mono-caption">auth-pod-4b</code>
+</p>
+<div class="flex items-center justify-between pt-1 text-mono-caption font-mono-caption text-secondary">
+<div class="flex items-center gap-2">
+<span>Duration: 28m 14s</span>
+<span>•</span>
+<span>Yesterday</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface">
+<span class="material-symbols-outlined text-[14px] text-secondary">person</span>
+<span>David Kim</span>
+</div>
+</div>
+</div>
+<!-- INC-8481 -->
+<div class="incident-row bg-surface-container-lowest p-space-md cursor-pointer transition-colors hover:bg-surface-container-low flex flex-col gap-2" id="row-8481" onclick="selectIncidentRow('row-8481')">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-mono-body text-mono-body font-semibold text-on-surface">INC-8481</span>
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">
+                    MEDIUM
+                  </span>
+</div>
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-surface-container-low text-secondary font-medium">PUBLISHED</span>
+</div>
+<p class="font-body-default text-body-default text-on-surface leading-snug">
+                Redis cache eviction spike on <code class="bg-surface-container px-1 py-0.5 rounded text-mono-caption font-mono-caption">session-store-replica</code>
+</p>
+<div class="flex items-center justify-between pt-1 text-mono-caption font-mono-caption text-secondary">
+<div class="flex items-center gap-2">
+<span>Duration: 14m 50s</span>
+<span>•</span>
+<span>3 days ago</span>
+</div>
+<div class="flex items-center gap-1 text-on-surface">
+<span class="material-symbols-outlined text-[14px] text-secondary">person</span>
+<span>Sarah Lin</span>
+</div>
+</div>
+</div>
+</div>
+<div class="p-space-sm bg-surface-container-lowest flex items-center justify-between">
+<span class="font-caption-ui text-caption-ui text-outline">Page 1 of 4 (14 items)</span>
+<div class="flex items-center gap-1">
+<button class="p-1 rounded bg-surface-container-low text-secondary hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined text-[16px]">chevron_left</span>
+</button>
+<button class="p-1 rounded bg-surface-container-low text-secondary hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Telemetry Context Box -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-caption-ui text-caption-ui text-on-surface font-semibold flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-primary">auto_fix_high</span>
+              AI Retrospective Synthesizer
+            </span>
+<span class="font-mono-badge text-mono-badge text-primary-fixed-variant bg-primary-fixed px-1.5 py-0.5 rounded">active</span>
+</div>
+<p class="font-body-default text-body-default text-on-surface-variant">
+            Cross-referencing OpenTelemetry traces with GitHub commits across 42 microservices. Next scheduled weekly SLO roll-up runs in <span class="font-mono-body text-mono-body font-medium text-on-surface">3h 12m</span>.
+          </p>
+</div>
+</div>
+<!-- Right Column (7 Cols on XL): Detailed Postmortem Document Sheet -->
+<div class="xl:col-span-7 flex flex-col bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
+<!-- Postmortem Document Top Header -->
+<div class="p-space-lg bg-surface-container-low/40 flex flex-col gap-space-sm">
+<div class="flex flex-wrap items-center justify-between gap-space-xs">
+<div class="flex items-center gap-2">
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-error-container text-on-error-container font-semibold">INC-8492</span>
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-secondary-container text-on-secondary-fixed font-medium">IN REVIEW (80% COMPLETE)</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="flex items-center gap-1 px-2.5 py-1 rounded bg-surface-container-lowest text-on-surface text-caption-ui font-caption-ui shadow-sm hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-[14px]">edit_note</span> Edit Draft
+              </button>
+<button class="flex items-center gap-1 px-2.5 py-1 rounded bg-primary text-on-primary text-caption-ui font-caption-ui shadow-sm hover:opacity-95 transition-opacity">
+<span class="material-symbols-outlined text-[14px]">publish</span> Publish Postmortem
+              </button>
+</div>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface font-semibold tracking-tight">
+            Postmortem: INC-8492 — Aurora DB Connection Pool Exhaustion
+          </h2>
+<div class="flex flex-wrap items-center gap-y-2 gap-x-4 pt-1 font-mono-caption text-mono-caption text-secondary">
+<div class="flex items-center gap-1">
+<span class="text-outline">Commander:</span>
+<span class="text-on-surface font-medium">Alex Chen (Staff SRE)</span>
+</div>
+<span>•</span>
+<div class="flex items-center gap-1">
+<span class="text-outline">Scribe:</span>
+<span class="text-primary font-medium">autonomous-agent-4</span>
+</div>
+<span>•</span>
+<div class="flex items-center gap-1">
+<span class="text-outline">Incident Date:</span>
+<span class="text-on-surface font-medium">Oct 24, 2024 (14:18 - 14:35 UTC)</span>
+</div>
+</div>
+</div>
+<!-- Document Body -->
+<div class="p-space-lg flex flex-col gap-space-xl">
+<!-- Section 1: Executive Summary -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-2">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-semibold">01</span>
+<h3 class="font-title-md text-title-md text-on-surface font-semibold">Executive Summary</h3>
+</div>
+<div class="bg-surface-container-low/40 p-space-md rounded-lg text-on-surface font-body-default text-body-default leading-relaxed">
+              On October 24, at <span class="font-mono-body text-mono-body font-medium">14:18 UTC</span>, a cascade of <span class="font-mono-body text-mono-body font-medium text-error">504 Gateway Timeouts</span> occurred on core checkout endpoints. The root cause was an uncommitted batch query holding exclusive row-level locks on <code class="bg-surface-container px-1 py-0.5 rounded font-mono-body text-mono-body">orders_ledger</code>, leading to 980 of 1,000 pool connections becoming blocked. Full recovery was achieved at <span class="font-mono-body text-mono-body font-medium">14:35 UTC</span> following rapid termination of zombie connections and dynamic connection limit adjustments.
+            </div>
+</div>
+<!-- Section 2: Impact Analysis -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-2">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-semibold">02</span>
+<h3 class="font-title-md text-title-md text-on-surface font-semibold">Impact Analysis</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+<div class="bg-surface-container-low/60 p-space-md rounded-lg flex flex-col gap-1.5">
+<div class="flex items-center gap-1.5 text-error font-body-medium text-body-medium font-semibold">
+<span class="material-symbols-outlined text-[16px]">payments</span>
+<span>Business Impact</span>
+</div>
+<div class="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold mt-1">
+                  ~4,200 <span class="text-caption-ui font-caption-ui text-secondary font-normal">failed checkouts</span>
+</div>
+<span class="font-mono-caption text-mono-caption text-error font-medium">
+                  Estimated revenue at risk: $14,200 USD
+                </span>
+<p class="font-body-default text-body-default text-on-surface-variant text-xs mt-1">
+                  Abandoned shopping carts tracked during the 17-minute saturation window. 74% returned within 2 hours.
+                </p>
+</div>
+<div class="bg-surface-container-low/60 p-space-md rounded-lg flex flex-col gap-1.5">
+<div class="flex items-center gap-1.5 text-primary font-body-medium text-body-medium font-semibold">
+<span class="material-symbols-outlined text-[16px]">speed</span>
+<span>Technical Impact</span>
+</div>
+<div class="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold mt-1">
+                  8,420ms <span class="text-caption-ui font-caption-ui text-secondary font-normal">p99 latency</span>
+</div>
+<span class="font-mono-caption text-mono-caption text-error font-medium">
+                  Order Service error rate reached 24.8%
+                </span>
+<p class="font-body-default text-body-default text-on-surface-variant text-xs mt-1">
+                  Thread contention starved Payment Service ingress threads; downstream HTTP timeouts cascaded.
+                </p>
+</div>
+</div>
+</div>
+<!-- Section 3: Chronological Sequence (Timeline Table) -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-semibold">03</span>
+<h3 class="font-title-md text-title-md text-on-surface font-semibold">Chronological Sequence</h3>
+</div>
+<span class="font-mono-caption text-mono-caption text-secondary">UTC Timeline</span>
+</div>
+<div class="bg-surface-container-lowest rounded-lg shadow-sm overflow-hidden">
+<div class="bg-surface-container-low px-space-md py-2 grid grid-cols-12 text-caption-ui font-caption-ui uppercase text-secondary font-semibold">
+<div class="col-span-3">Time (UTC)</div>
+<div class="col-span-2">Source</div>
+<div class="col-span-7">Telemetry &amp; Operational Action</div>
+</div>
+<div class="p-space-md flex flex-col gap-3 font-mono-body text-mono-body">
+<div class="grid grid-cols-12 items-start text-xs">
+<span class="col-span-3 font-semibold text-on-surface">14:18:02</span>
+<span class="col-span-2 font-mono-caption text-mono-caption text-secondary">Cron Batch</span>
+<span class="col-span-7 text-on-surface font-body-default text-body-default">
+                    Reconciliation batch query executed with row-lock acquire without explicit 2s statement timeout.
+                  </span>
+</div>
+<div class="grid grid-cols-12 items-start text-xs bg-surface-container-low/40 p-1.5 rounded">
+<span class="col-span-3 font-semibold text-error">14:19:44</span>
+<span class="col-span-2 font-mono-badge text-mono-badge px-1 py-0.5 bg-error-container text-on-error-container rounded">Anomaly AI</span>
+<span class="col-span-7 text-on-surface font-body-default text-body-default">
+                    TraceMind detector flagged 980 blocked connections on <code class="bg-surface-container px-1 py-0.2 rounded font-mono-caption text-mono-caption">aurora-prod-cluster-01</code>.
+                  </span>
+</div>
+<div class="grid grid-cols-12 items-start text-xs">
+<span class="col-span-3 font-semibold text-on-surface">14:20:27</span>
+<span class="col-span-2 font-mono-caption text-mono-caption text-secondary">PagerDuty</span>
+<span class="col-span-7 text-on-surface font-body-default text-body-default">
+                    Alex Chen (On-Call Staff SRE) paged and acknowledged the incident.
+                  </span>
+</div>
+<div class="grid grid-cols-12 items-start text-xs">
+<span class="col-span-3 font-semibold text-primary">14:29:10</span>
+<span class="col-span-2 font-mono-caption text-mono-caption text-secondary">SRE Action</span>
+<span class="col-span-7 text-on-surface font-body-default text-body-default">
+                    Manual execution of <code class="bg-surface-container px-1 py-0.2 rounded font-mono-caption text-mono-caption">pg_terminate_backend()</code> targeting orphaned batch PIDs.
+                  </span>
+</div>
+<div class="grid grid-cols-12 items-start text-xs bg-surface-container-low/40 p-1.5 rounded">
+<span class="col-span-3 font-semibold text-tertiary">14:35:00</span>
+<span class="col-span-2 font-mono-badge text-mono-badge px-1 py-0.5 bg-surface-container-highest text-tertiary rounded">Resolved</span>
+<span class="col-span-7 text-on-surface font-body-default text-body-default">
+                    Connection pool occupancy normalized at 112/1000. Latencies dropped below 120ms baseline.
+                  </span>
+</div>
+</div>
+</div>
+</div>
+<!-- Section 4: What Went Well & What Went Wrong (Side-by-Side Bento) -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-2">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-semibold">04</span>
+<h3 class="font-title-md text-title-md text-on-surface font-semibold">What Went Well &amp; What Went Wrong</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+<!-- Went Well -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col gap-space-sm">
+<div class="flex items-center gap-2 text-on-surface font-title-md text-title-md font-semibold">
+<span class="material-symbols-outlined text-[18px] text-tertiary">check_circle</span>
+<span>What Went Well</span>
+</div>
+<ul class="flex flex-col gap-2.5 font-body-default text-body-default text-on-surface-variant">
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-[16px] text-tertiary mt-0.5 flex-shrink-0">done</span>
+<span>Automated AI anomaly detection identified root cause within 4 minutes of initial connection saturation.</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-[16px] text-tertiary mt-0.5 flex-shrink-0">done</span>
+<span>PagerDuty notification reached on-call within 43 seconds with relevant trace links attached.</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-[16px] text-tertiary mt-0.5 flex-shrink-0">done</span>
+<span>No database data corruption or permanent record loss occurred during transaction aborts.</span>
+</li>
+</ul>
+</div>
+<!-- Went Wrong -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col gap-space-sm">
+<div class="flex items-center gap-2 text-on-surface font-title-md text-title-md font-semibold">
+<span class="material-symbols-outlined text-[18px] text-error">cancel</span>
+<span>What Went Wrong</span>
+</div>
+<ul class="flex flex-col gap-2.5 font-body-default text-body-default text-on-surface-variant">
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-[16px] text-error mt-0.5 flex-shrink-0">close</span>
+<span>Default pool connection timeout was configured too high (8,000ms instead of 2,000ms threshold).</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-[16px] text-error mt-0.5 flex-shrink-0">close</span>
+<span>Connection pool alerts did not trigger early warning at the 80% watermark prior to total exhaustion.</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="material-symbols-outlined text-[16px] text-error mt-0.5 flex-shrink-0">close</span>
+<span>Runbook execution required manual SRE dry-run approval, delaying connection rollback by 3 minutes.</span>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<!-- Section 5: Action Items & Preventive Measures -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-semibold">05</span>
+<h3 class="font-title-md text-title-md text-on-surface font-semibold">Action Items &amp; Preventive Measures</h3>
+</div>
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant">3 Action Items</span>
+</div>
+<div class="bg-surface-container-lowest rounded-xl shadow-sm overflow-x-auto">
+<table class="w-full text-left font-body-default text-body-default">
+<thead>
+<tr class="bg-surface-container-low text-caption-ui font-caption-ui uppercase text-secondary font-semibold">
+<th class="px-space-md py-2.5">Action Item</th>
+<th class="px-space-md py-2.5">Type</th>
+<th class="px-space-md py-2.5">Owner</th>
+<th class="px-space-md py-2.5">Pri</th>
+<th class="px-space-md py-2.5">Target</th>
+<th class="px-space-md py-2.5 text-right">Status</th>
+</tr>
+</thead>
+<tbody class="divide-y-0">
+<tr class="hover:bg-surface-container-low/40 transition-colors">
+<td class="px-space-md py-3 text-on-surface font-medium max-w-xs">
+                      Deploy AWS RDS Proxy to enforce connection pooling &amp; multiplexing
+                    </td>
+<td class="px-space-md py-3">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container text-secondary">Architecture</span>
+</td>
+<td class="px-space-md py-3 text-on-surface-variant">Data Platform</td>
+<td class="px-space-md py-3">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-error text-on-error font-medium">P0</span>
+</td>
+<td class="px-space-md py-3 font-mono-body text-mono-body text-secondary">Nov 2</td>
+<td class="px-space-md py-3 text-right">
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed-variant font-medium">In Progress</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low/40 transition-colors">
+<td class="px-space-md py-3 text-on-surface font-medium max-w-xs">
+                      Add 80% connection pool saturation threshold alerts in Prometheus
+                    </td>
+<td class="px-space-md py-3">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container text-secondary">Detection</span>
+</td>
+<td class="px-space-md py-3 text-on-surface-variant">Platform SRE</td>
+<td class="px-space-md py-3">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-secondary-container text-on-secondary-fixed font-medium">P1</span>
+</td>
+<td class="px-space-md py-3 font-mono-body text-mono-body text-secondary">Oct 28</td>
+<td class="px-space-md py-3 text-right">
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-surface-container-high text-on-surface font-medium">Completed</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low/40 transition-colors">
+<td class="px-space-md py-3 text-on-surface font-medium max-w-xs">
+                      Reduce client pool acquire timeout from 8s to 1.5s in <code class="bg-surface-container px-1 py-0.2 rounded font-mono-caption text-mono-caption">payment-service</code>
+</td>
+<td class="px-space-md py-3">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container text-secondary">Configuration</span>
+</td>
+<td class="px-space-md py-3 text-on-surface-variant">Checkout Core</td>
+<td class="px-space-md py-3">
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-secondary-container text-on-secondary-fixed font-medium">P1</span>
+</td>
+<td class="px-space-md py-3 font-mono-body text-mono-body text-secondary">Oct 27</td>
+<td class="px-space-md py-3 text-right">
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-tertiary-fixed text-on-tertiary-fixed-variant font-medium">Staged</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Document Footer / Audit Stamp -->
+<div class="p-space-md rounded-lg bg-surface-container-low/30 flex items-center justify-between text-mono-caption font-mono-caption text-outline">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">verified</span>
+<span>Cryptographic Audit ID: tm-postmortem-8492-c0ff3e-sha256</span>
+</div>
+<span>Generated via TraceMind Telemetry Mesh v2.14</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div></main></div></body></html>

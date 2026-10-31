@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"inverse-on-surface":"#eaf1ff","surface-bright":"#f8f9ff","tertiary-fixed":"#dbe1ff","on-tertiary":"#ffffff","on-tertiary-container":"#d1daff","on-secondary-container":"#5c647a","surface-container-high":"#dce9ff","primary":"#3525cd","error-container":"#ffdad6","on-tertiary-fixed-variant":"#003ea8","on-primary-fixed-variant":"#3323cc","on-secondary":"#ffffff","on-secondary-fixed":"#131b2e","surface-tint":"#4d44e3","on-primary-fixed":"#0f0069","surface":"#f8f9ff","primary-fixed-dim":"#c3c0ff","surface-container-highest":"#d3e4fe","inverse-primary":"#c3c0ff","secondary-fixed":"#dae2fd","on-background":"#0b1c30","tertiary-container":"#0555dd","on-surface-variant":"#464555","outline":"#777587","surface-container-low":"#eff4ff","error":"#ba1a1a","on-secondary-fixed-variant":"#3f465c","secondary":"#565e74","tertiary-fixed-dim":"#b4c5ff","on-error-container":"#93000a","primary-fixed":"#e2dfff","on-tertiary-fixed":"#00174b","secondary-fixed-dim":"#bec6e0","surface-variant":"#d3e4fe","secondary-container":"#dae2fd","surface-dim":"#cbdbf5","on-error":"#ffffff","surface-container":"#e5eeff","inverse-surface":"#213145","on-primary-container":"#dad7ff","on-surface":"#0b1c30","background":"#f8f9ff","surface-container-lowest":"#ffffff","on-primary":"#ffffff","outline-variant":"#c7c4d8","primary-container":"#4f46e5","tertiary":"#003fac"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"space-xs":"0.25rem","space-xl":"1.5rem","margin":"1rem","space-sm":"0.5rem","space-2xl":"2rem","space-md":"0.75rem","gutter":"1rem","space-xxs":"0.125rem","margin-desktop":"1.5rem","gutter-desktop":"1.5rem","space-lg":"1rem"},"fontFamily":{"body-default":["Inter"],"caption-ui":["Inter"],"display-lg-mobile":["Inter"],"body-medium":["Inter"],"mono-metric-lg":["JetBrains Mono"],"headline-md":["Inter"],"headline-sm":["Inter"],"title-md":["Inter"],"display-lg":["Inter"],"mono-badge":["JetBrains Mono"],"mono-body":["JetBrains Mono"],"mono-caption":["JetBrains Mono"]},"fontSize":{"body-default":["13px",{"lineHeight":"18px","letterSpacing":"0em","fontWeight":"400"}],"caption-ui":["11px",{"lineHeight":"14px","letterSpacing":"0.01em","fontWeight":"500"}],"display-lg-mobile":["26px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"600"}],"body-medium":["13px",{"lineHeight":"18px","letterSpacing":"0em","fontWeight":"500"}],"mono-metric-lg":["24px",{"lineHeight":"28px","letterSpacing":"-0.02em","fontWeight":"500"}],"headline-md":["24px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"600"}],"headline-sm":["18px",{"lineHeight":"24px","letterSpacing":"-0.01em","fontWeight":"600"}],"title-md":["15px",{"lineHeight":"20px","letterSpacing":"-0.005em","fontWeight":"600"}],"display-lg":["32px",{"lineHeight":"40px","letterSpacing":"-0.02em","fontWeight":"600"}],"mono-badge":["10px",{"lineHeight":"12px","letterSpacing":"0.02em","fontWeight":"500"}],"mono-body":["12px",{"lineHeight":"18px","letterSpacing":"0em","fontWeight":"400"}],"mono-caption":["11px",{"lineHeight":"14px","letterSpacing":"0em","fontWeight":"400"}]}}}}</script></head><body class="bg-background font-body-default text-body-default text-on-surface antialiased selection:bg-primary-fixed selection:text-on-primary-fixed"><aside class="fixed left-0 top-0 h-full w-60 bg-surface-container-lowest border-r border-outline-variant/30 z-50 flex flex-col justify-between select-none"><div class="flex flex-col"><div class="h-14 px-space-md border-b border-outline-variant/20 flex items-center justify-between"><div class="flex items-center gap-space-sm"><img alt="TraceMind Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1UVTcyxSQhLaLXC8YEGB5jlKXtc0o283iG2tZtiB3UDRgKcaAXDnM-qGjWXFp7CGlq2KYdcpYKLcINtTr7VWkkrEG3oxkaAioVCX8oLDPR19gPbMwmTK1VQHue1P-yF2p16Au1ciOaPIz8AzfpOweEJtxBecrf9zwz5GbUW88GpQANuLrLup83cThVN0GkgrodMiWUvdDamxGUKUkTJ-jaeLRYh9z5R78OiPpbSMbsT"/><span class="font-title-md text-title-md tracking-tight text-on-surface font-semibold">TraceMind</span></div><span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium uppercase tracking-wider">PROD</span></div><div class="px-space-md py-space-sm"><span class="font-caption-ui text-caption-ui text-outline uppercase tracking-wider font-semibold block px-space-xs mb-space-xxs">Telemetry &amp; Ops</span><nav class="flex flex-col gap-0.5" data-active-classes="bg-surface-container-high text-primary font-semibold shadow-[inset_3px_0_0_0_#3525cd]"><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="overview" href="#"><span class="font-body-medium text-body-medium">Overview</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="services" href="#"><span class="font-body-medium text-body-medium">Services</span><span class="font-mono-badge text-mono-badge px-1.5 py-0.2 bg-surface-container text-secondary rounded">42</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="dependency-map" href="#"><span class="font-body-medium text-body-medium">Dependency Map</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="incidents" href="#"><span class="font-body-medium text-body-medium">Incidents</span><span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded-full bg-error text-on-error font-medium">3</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="ai-investigation-center" href="#"><span class="font-body-medium text-body-medium">AI Investigations</span><span class="font-mono-badge text-mono-badge px-1.5 py-0.2 bg-primary-fixed text-on-primary-fixed-variant rounded font-medium">beta</span></a><a aria-current="page" class="group flex items-center justify-between px-space-sm py-2 rounded-lg transition-colors bg-surface-container-high text-primary font-semibold shadow-[inset_3px_0_0_0_#3525cd]" data-path="traces" href="#"><span class="font-body-medium text-body-medium">Traces</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="logs" href="#"><span class="font-body-medium text-body-medium">Logs</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="reports-postmortems" href="#"><span class="font-body-medium text-body-medium">Reports &amp; Postmortems</span></a><a class="group flex items-center justify-between px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors" data-path="settings" href="#"><span class="font-body-medium text-body-medium">Settings</span></a></nav></div></div><div class="p-space-sm border-t border-outline-variant/20 flex flex-col gap-space-xs bg-surface-container-lowest"><div class="p-space-xs rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer flex items-center justify-between"><div class="flex items-center gap-space-xs overflow-hidden"><span class="material-symbols-outlined text-[18px] text-secondary flex-shrink-0">corporate_fare</span><div class="flex flex-col truncate"><span class="font-caption-ui text-caption-ui text-on-surface font-semibold truncate">Acme Cloud Infra</span><span class="font-mono-caption text-mono-caption text-outline truncate">org-prod-us-east-1</span></div></div><span class="material-symbols-outlined text-[16px] text-outline">unfold_more</span></div><div class="pt-space-xs border-t border-outline-variant/10 flex items-center justify-between px-space-xs"><div class="flex items-center gap-space-xs"><div class="relative"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDo3kLijSZYHG5cklsGlhEVl_33IIW292avLA7wa-RCbLUCsSUFxVQF2ftjV4jKanAPJKsZ6sdledYPP9tsB59Q8De1l3X82IBf9uph5-xhfaeyTxRMsD6-rBBq_W3nLyf94cjxvvPvNDc8nGHpihNP30MceWPvzNJhk6tknmn2DkFiBYkcQ241_pSVrkMi89gwgKFkK1hOe_g9xida9GS2X2pnK6k29JwiDBggBoI"/><span class="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-primary ring-2 ring-surface-container-lowest"></span></div><div class="flex flex-col"><span class="font-caption-ui text-caption-ui text-on-surface font-semibold leading-tight">Alex Chen</span><span class="font-mono-caption text-mono-caption text-outline leading-tight">Staff SRE</span></div></div><a class="text-outline hover:text-on-surface p-1 rounded hover:bg-surface-container transition-colors" data-path="settings" href="#" title="Settings"><span class="material-symbols-outlined text-[18px]">keyboard_command_key</span></a></div></div></aside><div class="pl-60"><header class="fixed top-0 left-60 right-0 h-14 bg-surface-container-lowest/95 backdrop-blur-md border-b border-outline-variant/25 z-40 flex items-center justify-between px-space-lg shadow-[0_1px_4px_rgba(11,28,48,0.03)]"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-xs bg-surface-container-low px-space-sm py-1 rounded-lg border border-outline-variant/30 cursor-pointer hover:bg-surface-container transition-colors"><span class="material-symbols-outlined text-[16px] text-primary">folder_open</span><span class="font-body-medium text-body-medium text-on-surface font-medium">Core E-Commerce &amp; Payments</span><span class="material-symbols-outlined text-[16px] text-outline">expand_more</span></div><div class="flex items-center gap-1.5 px-space-xs py-1 rounded bg-secondary-container/40 border border-secondary-container text-on-secondary-fixed text-caption-ui font-caption-ui cursor-pointer hover:bg-secondary-container/70 transition-colors"><span class="w-1.5 h-1.5 rounded-full bg-primary"></span><span>Production</span><span class="material-symbols-outlined text-[14px] text-on-secondary-fixed-variant">arrow_drop_down</span></div><div class="h-4 w-px bg-outline-variant/30"></div><div class="flex items-center gap-space-xs text-on-surface-variant font-mono-body text-mono-body bg-surface-container-low px-space-sm py-1 rounded-lg border border-outline-variant/30 cursor-pointer hover:bg-surface-container transition-colors"><span class="material-symbols-outlined text-[16px] text-secondary">schedule</span><span>Last 15 minutes</span><span class="inline-flex items-center gap-1 ml-1 pl-1.5 border-l border-outline-variant/30 text-on-tertiary-fixed-variant text-mono-caption font-mono-caption"><span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse"></span>30s</span></div></div><div class="flex items-center gap-space-md flex-1 max-w-lg mx-space-lg"><div class="relative w-full"><span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[18px] text-outline">search</span><input class="w-full h-8 pl-9 pr-14 bg-surface text-on-surface placeholder:text-outline border border-outline-variant/40 rounded-lg text-body-default font-body-default focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all" placeholder="Search traces, span IDs, services, logs (Cmd+K)" type="text"/><kbd class="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-mono-caption font-mono-caption text-outline bg-surface-container border border-outline-variant/30 rounded">⌘K</kbd></div></div><div class="flex items-center gap-space-sm"><div class="relative"><button class="relative p-1.5 rounded-lg text-secondary hover:text-on-surface hover:bg-surface-container transition-colors" type="button"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-1 right-1 flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-error"></span></span></button></div><div class="flex items-center gap-1 px-2 py-1 rounded-full bg-error-container text-on-error-container text-mono-caption font-mono-caption border border-error/20"><span class="w-1.5 h-1.5 rounded-full bg-error"></span><span>2 critical</span></div><div class="h-4 w-px bg-outline-variant/30 mx-1"></div><div class="relative cursor-pointer"><img alt="Profile" class="w-8 h-8 rounded-full object-cover ring-1 ring-outline-variant/40" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDo3kLijSZYHG5cklsGlhEVl_33IIW292avLA7wa-RCbLUCsSUFxVQF2ftjV4jKanAPJKsZ6sdledYPP9tsB59Q8De1l3X82IBf9uph5-xhfaeyTxRMsD6-rBBq_W3nLyf94cjxvvPvNDc8nGHpihNP30MceWPvzNJhk6tknmn2DkFiBYkcQ241_pSVrkMi89gwgKFkK1hOe_g9xida9GS2X2pnK6k29JwiDBggBoI"/><span class="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-primary ring-2 ring-surface-container-lowest"></span></div></div></header><main class="relative pt-14 bg-background min-h-screen"><div class="flex flex-col w-full">
+<!-- Interactive Explorer Workspace -->
+<div class="p-space-lg flex flex-col gap-space-lg">
+<!-- Sub-header & Live Telemetry Summary Strip -->
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
+<div class="flex flex-wrap items-center gap-space-md">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[20px] text-primary">route</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">Trace Explorer</span>
+</div>
+<div class="h-4 w-px bg-surface-container-high hidden sm:block"></div>
+<div class="flex items-center gap-2">
+<span class="font-caption-ui text-caption-ui text-on-surface-variant">Showing</span>
+<span class="font-mono-metric-lg text-title-md text-on-surface">1,420</span>
+<span class="font-caption-ui text-caption-ui text-outline">traces evaluated</span>
+</div>
+<div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-mono-badge text-mono-badge">
+<span class="w-1.5 h-1.5 rounded-full bg-error animate-pulse"></span>
+<span>42 anomalous (2.95%)</span>
+</div>
+</div>
+<div class="flex items-center gap-space-xs flex-wrap">
+<button class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors font-body-medium text-body-medium" type="button">
+<span class="material-symbols-outlined text-[16px] text-secondary">tune</span>
+<span>Live Tail: Active</span>
+</button>
+<button class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors font-body-medium text-body-medium" type="button">
+<span class="material-symbols-outlined text-[16px] text-secondary">download</span>
+<span>Export OTel JSON</span>
+</button>
+<button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-container text-on-primary font-body-medium text-body-medium shadow-sm hover:opacity-95 transition-opacity" type="button">
+<span class="material-symbols-outlined text-[16px]">play_arrow</span>
+<span>Run Query</span>
+</button>
+</div>
+</div>
+<!-- Filter & Query Control Console -->
+<div class="bg-surface-container-lowest p-space-md rounded-xl shadow-sm flex flex-col gap-space-md">
+<!-- Monospace Expression Query Terminal -->
+<div class="relative w-full flex items-center bg-surface-container-low rounded-lg p-1 shadow-inner">
+<span class="font-mono-badge text-mono-badge px-2 py-1 rounded bg-surface-container-highest text-primary font-semibold tracking-wide ml-1">KQL/TRACE</span>
+<input class="w-full bg-transparent px-3 py-1.5 font-mono-body text-mono-body text-on-surface focus:outline-none placeholder:text-outline" id="query-input" placeholder="Filter by span name, tag, service:auth-svc or sql trace query..." type="text" value="service:api-gateway AND status:error AND duration:&gt;500ms AND trace_id:tr-9f82d4e7a1b0c*"/>
+<button class="p-1 rounded text-outline hover:text-on-surface mr-1" title="Clear query" type="button">
+<span class="material-symbols-outlined text-[18px]">backspace</span>
+</button>
+<button class="px-2.5 py-1 rounded bg-surface-container text-on-surface-variant font-mono-caption text-mono-caption hover:bg-surface-container-high transition-colors" type="button">
+          Saved (4)
+        </button>
+</div>
+<!-- Quick Facet Filters Grid -->
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-space-sm pt-1">
+<!-- Service Selector -->
+<div class="flex flex-col gap-1">
+<label class="font-caption-ui text-caption-ui text-outline uppercase tracking-wider font-semibold">Service</label>
+<div class="relative">
+<select class="w-full h-8 pl-2 pr-7 bg-surface-container-low text-on-surface rounded-lg font-body-default text-body-default appearance-none focus:outline-none focus:bg-surface-container cursor-pointer transition-colors">
+<option>All Services (5)</option>
+<option selected="">API Gateway</option>
+<option>Order Service</option>
+<option>Payment Service</option>
+<option>Aurora DB</option>
+</select>
+<span class="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-[16px] text-outline">unfold_more</span>
+</div>
+</div>
+<!-- Status Filter -->
+<div class="flex flex-col gap-1">
+<label class="font-caption-ui text-caption-ui text-outline uppercase tracking-wider font-semibold">Status</label>
+<div class="relative">
+<select class="w-full h-8 pl-2 pr-7 bg-error-container text-on-error-container rounded-lg font-body-default text-body-default font-medium appearance-none focus:outline-none cursor-pointer">
+<option>All Outcomes</option>
+<option selected="">Errors Only (42)</option>
+<option>Slow Spans (&gt;1s)</option>
+<option>HTTP 5xx Server Errs</option>
+</select>
+<span class="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-[16px] text-on-error-container">arrow_drop_down</span>
+</div>
+</div>
+<!-- HTTP Method -->
+<div class="flex flex-col gap-1">
+<label class="font-caption-ui text-caption-ui text-outline uppercase tracking-wider font-semibold">Method</label>
+<div class="relative">
+<select class="w-full h-8 pl-2 pr-7 bg-surface-container-low text-on-surface rounded-lg font-body-default text-body-default appearance-none focus:outline-none cursor-pointer">
+<option>ALL METHODS</option>
+<option>GET</option>
+<option selected="">POST</option>
+<option>PUT / PATCH</option>
+<option>DELETE</option>
+</select>
+<span class="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-[16px] text-outline">unfold_more</span>
+</div>
+</div>
+<!-- Duration Range -->
+<div class="flex flex-col gap-1">
+<label class="font-caption-ui text-caption-ui text-outline uppercase tracking-wider font-semibold">Duration</label>
+<div class="relative">
+<select class="w-full h-8 pl-2 pr-7 bg-surface-container-low text-on-surface rounded-lg font-body-default text-body-default appearance-none focus:outline-none cursor-pointer">
+<option>Any duration</option>
+<option>&gt; 100ms</option>
+<option selected="">&gt; 500ms</option>
+<option>&gt; 2,000ms (P99)</option>
+<option>&gt; 5,000ms (Outliers)</option>
+</select>
+<span class="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-[16px] text-outline">unfold_more</span>
+</div>
+</div>
+<!-- Time Window -->
+<div class="flex flex-col gap-1">
+<label class="font-caption-ui text-caption-ui text-outline uppercase tracking-wider font-semibold">Window</label>
+<div class="relative">
+<select class="w-full h-8 pl-2 pr-7 bg-surface-container-low text-on-surface rounded-lg font-body-default text-body-default appearance-none focus:outline-none cursor-pointer">
+<option>Last 5m</option>
+<option selected="">Last 15m</option>
+<option>Last 1h</option>
+<option>Last 24h</option>
+<option>Custom window...</option>
+</select>
+<span class="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-[16px] text-outline">unfold_more</span>
+</div>
+</div>
+<!-- Reset / Filter Controls -->
+<div class="flex flex-col justify-end">
+<div class="flex items-center gap-1.5 h-8">
+<button class="w-full h-full rounded-lg bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors font-body-medium text-body-medium flex items-center justify-center gap-1" type="button">
+<span class="material-symbols-outlined text-[16px]">restart_alt</span>
+<span>Reset</span>
+</button>
+<button class="p-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface transition-colors" title="Bookmark View" type="button">
+<span class="material-symbols-outlined text-[16px]">bookmark_border</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- UPPER: Dense Telemetry Trace Table -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
+<div class="px-space-md py-2.5 bg-surface-container-low flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<span class="font-caption-ui text-caption-ui uppercase font-semibold text-outline tracking-wider">Indexed Traces Pipeline</span>
+<span class="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-medium">SORT: LATENCY DESC</span>
+</div>
+<div class="flex items-center gap-3 font-caption-ui text-caption-ui text-on-surface-variant">
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-error"></span> 42 Critical 5xx</span>
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-surface-tint"></span> 1,378 HTTP 200 OK</span>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="h-8 bg-surface-container-lowest text-outline font-caption-ui text-caption-ui uppercase tracking-wider select-none">
+<th class="pl-space-md pr-space-xs font-semibold">Trace ID</th>
+<th class="px-space-sm font-semibold">Root Service</th>
+<th class="px-space-sm font-semibold">Root Endpoint</th>
+<th class="px-space-sm text-right font-semibold">Duration</th>
+<th class="px-space-sm text-center font-semibold">Spans</th>
+<th class="px-space-sm font-semibold">Status</th>
+<th class="px-space-sm text-right font-semibold">Timestamp</th>
+<th class="pr-space-md pl-space-xs text-right font-semibold">Inspect</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-container-low font-body-default text-body-default">
+<!-- Selected Highlighted Row -->
+<tr class="bg-primary-fixed/20 hover:bg-primary-fixed/30 cursor-pointer transition-colors group">
+<td class="pl-space-md pr-space-xs py-2">
+<div class="flex items-center gap-1.5">
+<span class="w-1.5 h-6 rounded-full bg-primary flex-shrink-0"></span>
+<span class="font-mono-body text-mono-body font-semibold text-primary">tr-9f82d4e7a1b0c</span>
+</div>
+</td>
+<td class="px-space-sm py-2">
+<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-container-high font-mono-badge text-mono-badge text-on-surface font-medium">
+                  api-gateway
+                </span>
+</td>
+<td class="px-space-sm py-2">
+<span class="font-mono-body text-mono-body text-on-surface font-medium">POST /api/v2/checkout/complete</span>
+</td>
+<td class="px-space-sm py-2 text-right">
+<span class="font-mono-body text-mono-body font-semibold text-error">8,420ms</span>
+</td>
+<td class="px-space-sm py-2 text-center">
+<span class="font-mono-caption text-mono-caption px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-medium">14</span>
+</td>
+<td class="px-space-sm py-2">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-mono-badge text-mono-badge font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+                  504 TIMEOUT
+                </span>
+</td>
+<td class="px-space-sm py-2 text-right font-mono-caption text-mono-caption text-outline">
+                14:22:18.042
+              </td>
+<td class="pr-space-md pl-space-xs py-2 text-right">
+<button class="p-1 rounded bg-primary text-on-primary hover:bg-primary/90 transition-colors" title="Detailed Waterfall Opened" type="button">
+<span class="material-symbols-outlined text-[16px]">visibility</span>
+</button>
+</td>
+</tr>
+<!-- Alternate Data Rows -->
+<tr class="hover:bg-surface-container-low transition-colors cursor-pointer">
+<td class="pl-space-md pr-space-xs py-2 font-mono-body text-mono-body text-secondary">
+                tr-7e04a912bb80e
+              </td>
+<td class="px-space-sm py-2">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded bg-surface-container font-mono-badge text-mono-badge text-on-surface-variant">
+                  order-service
+                </span>
+</td>
+<td class="px-space-sm py-2 font-mono-body text-mono-body text-on-surface">
+                GET /orders/usr_994102/summary
+              </td>
+<td class="px-space-sm py-2 text-right font-mono-body text-mono-body text-on-surface">
+                142ms
+              </td>
+<td class="px-space-sm py-2 text-center font-mono-caption text-mono-caption text-outline">
+                6
+              </td>
+<td class="px-space-sm py-2">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant font-mono-badge text-mono-badge">
+<span class="w-1.5 h-1.5 rounded-full bg-surface-tint"></span>
+                  200 OK
+                </span>
+</td>
+<td class="px-space-sm py-2 text-right font-mono-caption text-mono-caption text-outline">
+                14:22:15.918
+              </td>
+<td class="pr-space-md pl-space-xs py-2 text-right">
+<button class="p-1 rounded text-outline hover:text-on-surface hover:bg-surface-container transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">open_in_new</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors cursor-pointer">
+<td class="pl-space-md pr-space-xs py-2 font-mono-body text-mono-body text-secondary">
+                tr-2b814a0fc843d
+              </td>
+<td class="px-space-sm py-2">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded bg-surface-container font-mono-badge text-mono-badge text-on-surface-variant">
+                  payment-service
+                </span>
+</td>
+<td class="px-space-sm py-2 font-mono-body text-mono-body text-on-surface">
+                POST /v1/tokens/verify
+              </td>
+<td class="px-space-sm py-2 text-right font-mono-body text-mono-body text-on-surface">
+                84ms
+              </td>
+<td class="px-space-sm py-2 text-center font-mono-caption text-mono-caption text-outline">
+                4
+              </td>
+<td class="px-space-sm py-2">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant font-mono-badge text-mono-badge">
+<span class="w-1.5 h-1.5 rounded-full bg-surface-tint"></span>
+                  200 OK
+                </span>
+</td>
+<td class="px-space-sm py-2 text-right font-mono-caption text-mono-caption text-outline">
+                14:22:12.780
+              </td>
+<td class="pr-space-md pl-space-xs py-2 text-right">
+<button class="p-1 rounded text-outline hover:text-on-surface hover:bg-surface-container transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">open_in_new</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors cursor-pointer">
+<td class="pl-space-md pr-space-xs py-2 font-mono-body text-mono-body text-secondary">
+                tr-c31a78fd14e99
+              </td>
+<td class="px-space-sm py-2">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded bg-surface-container font-mono-badge text-mono-badge text-on-surface-variant">
+                  api-gateway
+                </span>
+</td>
+<td class="px-space-sm py-2 font-mono-body text-mono-body text-on-surface">
+                GET /health/ready
+              </td>
+<td class="px-space-sm py-2 text-right font-mono-body text-mono-body text-on-surface">
+                2ms
+              </td>
+<td class="px-space-sm py-2 text-center font-mono-caption text-mono-caption text-outline">
+                1
+              </td>
+<td class="px-space-sm py-2">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant font-mono-badge text-mono-badge">
+<span class="w-1.5 h-1.5 rounded-full bg-surface-tint"></span>
+                  200 OK
+                </span>
+</td>
+<td class="px-space-sm py-2 text-right font-mono-caption text-mono-caption text-outline">
+                14:22:10.002
+              </td>
+<td class="pr-space-md pl-space-xs py-2 text-right">
+<button class="p-1 rounded text-outline hover:text-on-surface hover:bg-surface-container transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">open_in_new</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- LOWER: Trace Detail & Waterfall Flamegraph View -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-lg">
+<!-- Primary Waterfall Visualizer (8 cols on XL) -->
+<div class="xl:col-span-8 bg-surface-container-lowest rounded-xl shadow-sm flex flex-col p-space-md gap-space-md">
+<!-- Detail Header -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between pb-space-xs gap-space-sm">
+<div class="flex flex-col">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="font-headline-sm text-headline-sm text-on-surface">Trace tr-9f82d4e7a1b0c</span>
+<span class="font-mono-body text-mono-body text-secondary bg-surface-container px-2 py-0.5 rounded">POST /api/v2/checkout/complete</span>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-mono-badge text-mono-badge font-semibold">
+                HTTP 504 GATEWAY TIMEOUT
+              </span>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-1.5 rounded-lg bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors" title="Zoom In Timeline" type="button">
+<span class="material-symbols-outlined text-[18px]">zoom_in</span>
+</button>
+<button class="p-1.5 rounded-lg bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors" title="Zoom Out Timeline" type="button">
+<span class="material-symbols-outlined text-[18px]">zoom_out</span>
+</button>
+<button class="p-1.5 rounded-lg bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors" title="Fit to width" type="button">
+<span class="material-symbols-outlined text-[18px]">fit_screen</span>
+</button>
+</div>
+</div>
+<!-- Metadata Chips Row -->
+<div class="flex flex-wrap items-center gap-2 py-2 px-3 bg-surface-container-low rounded-lg font-caption-ui text-caption-ui text-on-surface-variant">
+<div class="flex items-center gap-1">
+<span class="text-outline">Total Duration:</span>
+<span class="font-mono-body text-mono-body font-semibold text-error">8,420ms</span>
+</div>
+<span class="text-outline-variant">•</span>
+<div class="flex items-center gap-1">
+<span class="text-outline">Total Spans:</span>
+<span class="font-mono-caption text-mono-caption font-semibold text-on-surface">14</span>
+</div>
+<span class="text-outline-variant">•</span>
+<div class="flex items-center gap-1">
+<span class="text-outline">Services Involved:</span>
+<span class="font-mono-caption text-mono-caption font-semibold text-on-surface">4</span>
+</div>
+<span class="text-outline-variant">•</span>
+<div class="flex items-center gap-1">
+<span class="text-outline">Client:</span>
+<span class="font-medium text-on-surface">Web Checkout (v4.19)</span>
+</div>
+<span class="text-outline-variant">•</span>
+<div class="flex items-center gap-1">
+<span class="text-outline">Host:</span>
+<span class="font-mono-caption text-mono-caption text-on-surface">ip-10-0-4-82</span>
+</div>
+</div>
+<!-- AI Insight Diagnostic Callout -->
+<div class="p-space-md rounded-xl bg-tertiary-fixed/30 flex items-start gap-space-sm shadow-sm">
+<div class="p-1.5 rounded-lg bg-tertiary text-on-tertiary flex items-center justify-center flex-shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-[18px]">auto_awesome</span>
+</div>
+<div class="flex flex-col gap-0.5 flex-1">
+<div class="flex items-center justify-between">
+<span class="font-title-md text-title-md text-on-surface font-semibold">AI Automated Root Cause Synthesis</span>
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-surface-container-lowest text-primary font-medium">99.4% CONFIDENCE</span>
+</div>
+<p class="font-body-default text-body-default text-on-surface-variant leading-relaxed">
+<strong class="text-error font-semibold">Critical Path Identified:</strong> 8,110ms (96.3% of trace duration) was spent blocked inside <span class="font-mono-caption text-mono-caption font-semibold text-on-surface bg-surface-container-lowest px-1 py-0.5 rounded">payment-service</span> awaiting query lock acquisition on <code class="font-mono-caption text-mono-caption text-on-surface font-medium bg-surface-container-lowest px-1 py-0.5 rounded">SELECT orders_ledger FOR UPDATE</code>. Database pool exhaustion directly induced the HTTP 504 upstream timeout.
+            </p>
+</div>
+</div>
+<!-- Waterfall Flamegraph Chart Container -->
+<div class="flex flex-col gap-1 overflow-x-auto pt-2">
+<!-- Timeline Ruler Header -->
+<div class="grid grid-cols-12 gap-1 items-center pb-2 border-b border-surface-container-high font-mono-caption text-mono-caption text-outline">
+<div class="col-span-4 sm:col-span-5 px-2">Span Hierarchy &amp; Operation</div>
+<div class="col-span-8 sm:col-span-7 flex justify-between pr-2 text-right">
+<span>0ms</span>
+<span>2000ms</span>
+<span>4000ms</span>
+<span>6000ms</span>
+<span>8000ms</span>
+<span>8420ms</span>
+</div>
+</div>
+<!-- Span 1: Root Gateway -->
+<div class="grid grid-cols-12 gap-1 items-center py-1.5 px-2 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer">
+<div class="col-span-4 sm:col-span-5 flex items-center gap-1.5 truncate">
+<span class="material-symbols-outlined text-[16px] text-outline">expand_more</span>
+<span class="w-2 h-2 rounded-full bg-primary flex-shrink-0"></span>
+<span class="font-caption-ui text-caption-ui font-semibold text-on-surface truncate">api-gateway</span>
+<span class="font-mono-caption text-mono-caption text-outline truncate">POST /api/v2/checkout</span>
+</div>
+<div class="col-span-8 sm:col-span-7 relative h-6 bg-surface-container rounded flex items-center">
+<div class="absolute left-0 top-0 bottom-0 w-full rounded bg-primary/20 flex items-center justify-between px-2">
+<span class="font-mono-badge text-mono-badge font-semibold text-primary truncate">api-gateway • 8,420ms (HTTP 504)</span>
+<span class="font-mono-badge text-mono-badge text-error font-medium">100%</span>
+</div>
+</div>
+</div>
+<!-- Span 2: Order Service Orchestration -->
+<div class="grid grid-cols-12 gap-1 items-center py-1.5 px-2 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer">
+<div class="col-span-4 sm:col-span-5 flex items-center gap-1.5 pl-3 truncate">
+<span class="material-symbols-outlined text-[16px] text-outline">expand_more</span>
+<span class="w-2 h-2 rounded-full bg-secondary flex-shrink-0"></span>
+<span class="font-caption-ui text-caption-ui font-semibold text-on-surface truncate">order-service</span>
+<span class="font-mono-caption text-mono-caption text-outline truncate">rpc ProcessOrder</span>
+</div>
+<div class="col-span-8 sm:col-span-7 relative h-6 bg-surface-container rounded flex items-center">
+<div class="absolute left-[0.2%] top-0 bottom-0 w-[99.8%] rounded bg-secondary-container flex items-center justify-between px-2">
+<span class="font-mono-badge text-mono-badge font-medium text-on-secondary-fixed truncate">order-service • 8,405ms (Error)</span>
+</div>
+</div>
+</div>
+<!-- Span 3: Order Service Cache Get (Redis) -->
+<div class="grid grid-cols-12 gap-1 items-center py-1.5 px-2 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer">
+<div class="col-span-4 sm:col-span-5 flex items-center gap-1.5 pl-6 truncate">
+<span class="w-2 h-2 rounded-full bg-surface-tint flex-shrink-0 ml-4"></span>
+<span class="font-caption-ui text-caption-ui font-medium text-on-surface truncate">order-service</span>
+<span class="font-mono-caption text-mono-caption text-outline truncate">cache.get user_session:8841</span>
+</div>
+<div class="col-span-8 sm:col-span-7 relative h-6 bg-surface-container rounded flex items-center">
+<div class="absolute left-[0.3%] top-0 bottom-0 w-[2%] min-w-[28px] rounded bg-surface-tint flex items-center justify-center">
+<span class="font-mono-badge text-[9px] text-on-primary">4ms</span>
+</div>
+<span class="font-mono-caption text-mono-caption text-outline pl-8 text-[10px]">Redis Cache Hit</span>
+</div>
+</div>
+<!-- Span 4: Payment Service RPC -->
+<div class="grid grid-cols-12 gap-1 items-center py-1.5 px-2 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer">
+<div class="col-span-4 sm:col-span-5 flex items-center gap-1.5 pl-6 truncate">
+<span class="material-symbols-outlined text-[16px] text-outline">expand_more</span>
+<span class="w-2 h-2 rounded-full bg-error flex-shrink-0"></span>
+<span class="font-caption-ui text-caption-ui font-semibold text-on-surface truncate">payment-service</span>
+<span class="font-mono-caption text-mono-caption text-outline truncate">rpc AuthorizePayment</span>
+</div>
+<div class="col-span-8 sm:col-span-7 relative h-6 bg-surface-container rounded flex items-center">
+<div class="absolute left-[2%] top-0 bottom-0 w-[97.8%] rounded bg-error-container flex items-center justify-between px-2">
+<span class="font-mono-badge text-mono-badge font-semibold text-on-error-container truncate">payment-service • 8,240ms (Error)</span>
+</div>
+</div>
+</div>
+<!-- Span 5: Stripe HTTP Request -->
+<div class="grid grid-cols-12 gap-1 items-center py-1.5 px-2 rounded-lg hover:bg-surface-container-low transition-colors cursor-pointer">
+<div class="col-span-4 sm:col-span-5 flex items-center gap-1.5 pl-9 truncate">
+<span class="w-2 h-2 rounded-full bg-tertiary flex-shrink-0 ml-4"></span>
+<span class="font-caption-ui text-caption-ui font-medium text-on-surface truncate">payment-service</span>
+<span class="font-mono-caption text-mono-caption text-outline truncate">http.post api.stripe.com</span>
+</div>
+<div class="col-span-8 sm:col-span-7 relative h-6 bg-surface-container rounded flex items-center">
+<div class="absolute left-[2.5%] top-0 bottom-0 w-[4%] min-w-[36px] rounded bg-tertiary-container flex items-center justify-center">
+<span class="font-mono-badge text-[9px] text-on-primary">120ms</span>
+</div>
+<span class="font-mono-caption text-mono-caption text-outline pl-14 text-[10px]">Stripe Charge Tokenized OK</span>
+</div>
+</div>
+<!-- Span 6: Aurora DB Lock Contention (CRITICAL BOTTLENECK) -->
+<div class="grid grid-cols-12 gap-1 items-center py-1.5 px-2 rounded-lg bg-error-container/40 ring-1 ring-error/20 cursor-pointer shadow-sm">
+<div class="col-span-4 sm:col-span-5 flex items-center gap-1.5 pl-9 truncate">
+<span class="w-2 h-2 rounded-full bg-error flex-shrink-0 animate-ping ml-4"></span>
+<span class="font-caption-ui text-caption-ui font-bold text-error truncate">aurora-db</span>
+<span class="font-mono-caption text-mono-caption text-on-error-container truncate font-medium">db.query SELECT FOR UPDATE</span>
+</div>
+<div class="col-span-8 sm:col-span-7 relative h-6 bg-surface-container rounded flex items-center">
+<div class="absolute left-[3.5%] top-0 bottom-0 w-[96.3%] rounded bg-error flex items-center justify-between px-2 shadow">
+<span class="font-mono-badge text-mono-badge font-bold text-on-error truncate">db.query SELECT * FROM orders_ledger... • 8,110ms [TIMEOUT]</span>
+<span class="font-mono-badge text-mono-badge bg-surface-container-lowest/20 text-on-error px-1 rounded uppercase font-semibold text-[9px]">Bottleneck</span>
+</div>
+</div>
+</div>
+<!-- Span 7: Notification Service (Canceled/Skipped) -->
+<div class="grid grid-cols-12 gap-1 items-center py-1.5 px-2 rounded-lg opacity-40">
+<div class="col-span-4 sm:col-span-5 flex items-center gap-1.5 pl-6 truncate">
+<span class="w-2 h-2 rounded-full bg-outline flex-shrink-0 ml-4"></span>
+<span class="font-caption-ui text-caption-ui font-medium text-outline truncate">notification-service</span>
+<span class="font-mono-caption text-mono-caption text-outline truncate">rpc PushNotification</span>
+</div>
+<div class="col-span-8 sm:col-span-7 relative h-6 bg-surface-container-low rounded flex items-center px-2">
+<span class="font-mono-caption text-mono-caption text-outline italic">Execution skipped: Parent span terminated with fatal exception</span>
+</div>
+</div>
+</div>
+<!-- Legend / Taxonomy Footer -->
+<div class="flex items-center justify-between pt-2 border-t border-surface-container-low text-caption-ui font-caption-ui text-outline">
+<div class="flex items-center gap-4 flex-wrap">
+<span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-primary"></span> Gateway / Ingress</span>
+<span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-secondary-container"></span> Internal Microservice</span>
+<span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-tertiary-container"></span> External HTTP API</span>
+<span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-error"></span> Database / Error Lock</span>
+</div>
+<span>Showing 7 of 14 child spans</span>
+</div>
+</div>
+<!-- Span Detail Inspector Drawer (4 cols on XL) -->
+<div class="xl:col-span-4 bg-surface-container-lowest rounded-xl shadow-sm flex flex-col p-space-md gap-space-md">
+<div class="flex items-center justify-between border-b border-surface-container-high pb-2">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[18px] text-error">error</span>
+<span class="font-title-md text-title-md text-on-surface font-semibold">Span Attributes</span>
+</div>
+<span class="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-error-container text-on-error-container font-semibold">SELECTED SPAN</span>
+</div>
+<!-- Active Span Identity Card -->
+<div class="bg-surface-container-low p-space-sm rounded-lg flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="font-mono-body text-mono-body font-semibold text-on-surface">aurora-db</span>
+<span class="font-mono-caption text-mono-caption text-error font-medium">8,110ms</span>
+</div>
+<div class="font-mono-caption text-mono-caption text-on-surface-variant break-all">
+            db.query SELECT * FROM orders_ledger WHERE order_id = $1 FOR UPDATE
+          </div>
+</div>
+<!-- Diagnostic Key-Value Attributes Grid -->
+<div class="flex flex-col gap-2">
+<span class="font-caption-ui text-caption-ui uppercase font-semibold text-outline tracking-wider">Semantic Conventions &amp; Context</span>
+<div class="flex flex-col gap-1.5 font-mono-caption text-mono-caption">
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container">
+<span class="text-on-surface-variant">db.system</span>
+<span class="font-semibold text-on-surface">postgresql</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container">
+<span class="text-on-surface-variant">db.name</span>
+<span class="font-semibold text-on-surface">production_orders</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container">
+<span class="text-on-surface-variant">pool.wait_time</span>
+<span class="font-semibold text-error">8,095ms</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container">
+<span class="text-on-surface-variant">pool.acquired</span>
+<span class="font-semibold text-error">false</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container">
+<span class="text-on-surface-variant">db.instance</span>
+<span class="text-on-surface">aurora-cluster-writer-01</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container">
+<span class="text-on-surface-variant">net.peer.name</span>
+<span class="text-on-surface">aurora.internal.us-east-1.aws</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container">
+<span class="text-on-surface-variant">span.kind</span>
+<span class="text-on-surface">CLIENT</span>
+</div>
+<div class="flex items-center justify-between p-1.5 rounded bg-surface-container">
+<span class="text-on-surface-variant">error</span>
+<span class="font-semibold text-error">true</span>
+</div>
+</div>
+</div>
+<!-- Error Stack Payload -->
+<div class="flex flex-col gap-1.5">
+<div class="flex items-center justify-between">
+<span class="font-caption-ui text-caption-ui uppercase font-semibold text-error tracking-wider">Exception Payload</span>
+<button class="text-outline hover:text-on-surface transition-colors font-mono-badge text-mono-badge flex items-center gap-0.5" type="button">
+<span class="material-symbols-outlined text-[14px]">content_copy</span>
+<span>Copy</span>
+</button>
+</div>
+<div class="bg-surface-container-highest p-space-sm rounded-lg font-mono-caption text-mono-caption text-on-error-container overflow-x-auto leading-relaxed">
+<p class="font-semibold text-error">ConnectionTimeout: Connection pool exhausted (max 1000)</p>
+<p class="text-outline text-[10px] mt-1">at Pool.acquireConnection (/app/node_modules/pg-pool/index.js:142:19)</p>
+<p class="text-outline text-[10px]">at async OrderLedgerRepository.lockRecord (/app/dist/services/ledger.js:48:11)</p>
+</div>
+</div>
+<!-- Remediation Action Trigger -->
+<div class="pt-2 mt-auto border-t border-surface-container-low flex flex-col gap-2">
+<button class="w-full py-2 px-3 rounded-lg bg-primary text-on-primary font-body-medium text-body-medium flex items-center justify-center gap-1.5 shadow-sm hover:opacity-95 transition-opacity" type="button">
+<span class="material-symbols-outlined text-[18px]">build</span>
+<span>Open in AI Incident Command</span>
+</button>
+<button class="w-full py-1.5 px-3 rounded-lg bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors font-body-medium text-body-medium flex items-center justify-center gap-1.5" type="button">
+<span class="material-symbols-outlined text-[18px]">terminal</span>
+<span>Correlate Database Logs</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div></main></div></body></html>
