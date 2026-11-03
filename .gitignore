@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Production build artifacts
+dist/
+frontend/dist/
+dist-ssr/
+
+# Environment files
+.env
+.env.*
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Temporary / OS
+*.log
+.DS_Store
+Thumbs.db
+-LLM.zip
+
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.venv/
+venv/
+ENV/
+
+# Python testing and tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local databases
+*.sqlite
+*.sqlite3
+*.db
+
+# IDE and editor
+.vscode/
+.idea/
+
+# OS temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
