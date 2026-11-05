@@ -30,6 +30,17 @@ class ServiceRepository:
     def get_by_identifier(self, identifier: str) -> Optional[Service]:
         return self.db.query(Service).filter(Service.identifier == identifier).first()
 
+    def get_by_project_and_identifier(self, project_id: UUID, identifier: str) -> Optional[Service]:
+        norm_ident = identifier.strip()
+        return (
+            self.db.query(Service)
+            .filter(
+                Service.project_id == project_id,
+                (Service.identifier == norm_ident) | (Service.slug == norm_ident),
+            )
+            .first()
+        )
+
     def create(self, service: Service) -> Service:
         self.db.add(service)
         self.db.commit()

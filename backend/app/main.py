@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -77,17 +78,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={
             "error": "Unprocessable Entity",
             "message": "Input validation failed on request parameters or payload.",
-            "details": exc.errors(),
+            "detail": jsonable_encoder(exc.errors()),
+            "details": jsonable_encoder(exc.errors()),
         },
     )
 
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    detail_str = exc.detail if isinstance(exc.detail, str) else "HTTP Exception"
     return JSONResponse(
         status_code=exc.status_code,
         content={
-            "error": exc.detail if isinstance(exc.detail, str) else "HTTP Exception",
+            "error": detail_str,
+            "detail": exc.detail,
             "status_code": exc.status_code,
         },
     )

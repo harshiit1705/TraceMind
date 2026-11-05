@@ -20,6 +20,7 @@ from app.db.session import get_db
 from app.main import app
 from app.services.project_service import ProjectService
 from app.services.incident_service import IncidentService
+from app.services.anomaly.registry import get_anomaly_registry
 
 # In-memory hermetic SQLite engine for automated unit tests
 test_engine = create_engine(
@@ -46,7 +47,11 @@ def seed_test_database():
     finally:
         session.close()
 
+    get_anomaly_registry().reset_all()
+
     yield
+
+    get_anomaly_registry().reset_all()
 
 
 @pytest.fixture()

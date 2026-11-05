@@ -10,6 +10,7 @@ from app.models.finding import Finding
 from app.models.recommendation import Recommendation
 from app.models.runbook import Runbook
 from app.models.feedback import InvestigationFeedback
+from app.models.anomaly import AnomalyBaseline, AnomalyEvent
 
 __all__ = [
     "Base",
@@ -28,5 +29,7 @@ __all__ = [
     "Recommendation",
     "Runbook",
     "InvestigationFeedback",
+    "AnomalyBaseline",
+    "AnomalyEvent",
 ]
 

@@ -28,6 +28,17 @@ from app.schemas.investigation import (
     InvestigationFeedbackCreate,
     InvestigationFeedbackResponse,
 )
+from app.schemas.anomaly import (
+    DetectionMethod,
+    DetectionStatus,
+    AnomalySeverity,
+    AnomalyEventStatus,
+    MetricType,
+    AnomalyDetectionConfig,
+    AnomalyDetectionResult,
+    AnomalyEvaluationRequest,
+    AnomalyEvaluationResponse,
+)
 
 __all__ = [
     "IncidentSeverity",
@@ -59,5 +70,14 @@ __all__ = [
     "InvestigationDetailResponse",
     "InvestigationFeedbackCreate",
     "InvestigationFeedbackResponse",
+    "DetectionMethod",
+    "DetectionStatus",
+    "AnomalySeverity",
+    "AnomalyEventStatus",
+    "MetricType",
+    "AnomalyDetectionConfig",
+    "AnomalyDetectionResult",
+    "AnomalyEvaluationRequest",
+    "AnomalyEvaluationResponse",
 ]
 

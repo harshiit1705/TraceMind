@@ -17,4 +17,6 @@ class Project(Base, UUIDMixin, TimestampMixin):
     services = relationship("Service", back_populates="project", cascade="all, delete-orphan")
     incidents = relationship("Incident", back_populates="project", cascade="all, delete-orphan")
     runbooks = relationship("Runbook", back_populates="project", cascade="all, delete-orphan")
+    anomaly_baselines = relationship("AnomalyBaseline", back_populates="project", cascade="all, delete-orphan")
+    anomaly_events = relationship("AnomalyEvent", back_populates="project", cascade="all, delete-orphan")
 

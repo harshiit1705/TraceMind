@@ -20,6 +20,8 @@ class Service(Base, UUIDMixin, TimestampMixin):
     metadata_json = Column(JSONBCompat, default=dict, nullable=False)
 
     project = relationship("Project", back_populates="services")
+    anomaly_baselines = relationship("AnomalyBaseline", back_populates="service", cascade="all, delete-orphan")
+    anomaly_events = relationship("AnomalyEvent", back_populates="service", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("project_id", "slug", name="uq_project_service_slug"),
