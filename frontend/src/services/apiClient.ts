@@ -11,7 +11,9 @@ import {
   PostmortemReport,
   SystemSettings,
   TelemetryOverviewData,
-  ServiceTopologyData
+  ServiceTopologyData,
+  CorrelationGroup,
+  RootCauseCandidate,
 } from '../types';
 import { 
   MOCK_SERVICES, 
@@ -23,7 +25,8 @@ import {
   MOCK_TRACES, 
   MOCK_INVESTIGATION, 
   MOCK_POSTMORTEM, 
-  MOCK_SETTINGS 
+  MOCK_SETTINGS,
+  MOCK_CORRELATION_GROUP,
 } from '../mocks/mockData';
 
 class ApiClient {
@@ -156,6 +159,22 @@ class ApiClient {
 
   public async getSettings(): Promise<ApiResponse<SystemSettings>> {
     return this.request<SystemSettings>('/api/v1/settings', MOCK_SETTINGS);
+  }
+
+  public async getCorrelations(projectId?: string): Promise<ApiResponse<CorrelationGroup[]>> {
+    const endpoint = projectId ? `/api/v1/correlations?project_id=${projectId}` : '/api/v1/correlations';
+    return this.request<CorrelationGroup[]>(endpoint, [MOCK_CORRELATION_GROUP]);
+  }
+
+  public async getCorrelationById(id: string): Promise<ApiResponse<CorrelationGroup>> {
+    return this.request<CorrelationGroup>(`/api/v1/correlations/${id}`, MOCK_CORRELATION_GROUP);
+  }
+
+  public async getRootCauseCandidates(correlationId: string): Promise<ApiResponse<RootCauseCandidate[]>> {
+    return this.request<RootCauseCandidate[]>(
+      `/api/v1/correlations/${correlationId}/candidates`,
+      MOCK_CORRELATION_GROUP.ranked_candidates
+    );
   }
 }
 

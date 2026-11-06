@@ -11,6 +11,12 @@ from app.models.recommendation import Recommendation
 from app.models.runbook import Runbook
 from app.models.feedback import InvestigationFeedback
 from app.models.anomaly import AnomalyBaseline, AnomalyEvent
+from app.models.service_dependency import ServiceDependency
+from app.models.correlation import (
+    CorrelationGroup,
+    CorrelationEventAssociation,
+    RootCauseCandidate,
+)
 
 __all__ = [
     "Base",
@@ -21,6 +27,7 @@ __all__ = [
     "Organization",
     "Project",
     "Service",
+    "ServiceDependency",
     "Incident",
     "IncidentEvent",
     "Investigation",
@@ -31,5 +38,8 @@ __all__ = [
     "InvestigationFeedback",
     "AnomalyBaseline",
     "AnomalyEvent",
+    "CorrelationGroup",
+    "CorrelationEventAssociation",
+    "RootCauseCandidate",
 ]
 

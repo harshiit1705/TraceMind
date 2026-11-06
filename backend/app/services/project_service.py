@@ -20,6 +20,9 @@ class ProjectService:
         """Seeds default organization, project, and services if database is currently empty."""
         existing_project = self.project_repo.get_by_slug("core-ecommerce")
         if existing_project:
+            svcs = self.service_repo.get_by_project(existing_project.id)
+            service_map = {s.slug: s for s in svcs}
+            self._seed_dependencies(existing_project.id, service_map)
             return existing_project
 
         # 1. Organization
@@ -223,12 +226,52 @@ class ProjectService:
             }
         ]
 
+        service_map = {}
         for s_data in services_data:
             svc = Service(project_id=proj.id, **s_data)
             self.db.add(svc)
+            service_map[s_data["slug"]] = svc
 
         self.db.commit()
+        for svc in service_map.values():
+            self.db.refresh(svc)
+
+        self._seed_dependencies(proj.id, service_map)
         return proj
+
+    def _seed_dependencies(self, project_id: UUID, service_map: dict) -> None:
+        from app.models.service_dependency import ServiceDependency
+        from app.repositories.service_dependency_repository import ServiceDependencyRepository
+        dep_repo = ServiceDependencyRepository(self.db)
+        existing_deps = dep_repo.list_by_project(project_id)
+        if existing_deps:
+            return
+
+        dep_edges = [
+            ("api-gateway", "order-service", "sync", "Ingress proxy route to order orchestration"),
+            ("api-gateway", "user-service", "sync", "Ingress proxy route to identity core"),
+            ("api-gateway", "auth-service", "sync", "Token authentication and authorization check"),
+            ("order-service", "payment-service", "sync", "Payment intent and token settlement"),
+            ("order-service", "inventory-service", "sync", "Stock allocation and reservation"),
+            ("order-service", "notification-service", "async", "Transactional email and push dispatch"),
+            ("order-service", "postgres", "database", "Orders ledger and state machine persistence"),
+            ("payment-service", "postgres", "database", "PCI ledger transaction audit records"),
+            ("user-service", "postgres", "database", "User account profile storage"),
+            ("inventory-service", "postgres", "database", "Warehouse catalog inventory counts"),
+        ]
+        for src_slug, tgt_slug, dep_type, desc in dep_edges:
+            src = service_map.get(src_slug)
+            tgt = service_map.get(tgt_slug)
+            if src and tgt:
+                dep = ServiceDependency(
+                    project_id=project_id,
+                    source_service_id=src.id,
+                    target_service_id=tgt.id,
+                    dependency_type=dep_type,
+                    description=desc,
+                )
+                self.db.add(dep)
+        self.db.commit()
 
     def list_projects(self, skip: int = 0, limit: int = 50) -> List[ProjectResponse]:
         self.ensure_default_seed()

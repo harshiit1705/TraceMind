@@ -6,4 +6,5 @@ export * from './ai-investigation';
 export * from './postmortem';
 export * from './settings';
 export * from './telemetry';
+export * from './correlation';
 

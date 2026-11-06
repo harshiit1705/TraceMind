@@ -8,7 +8,8 @@ import {
   PostmortemReport, 
   SystemSettings,
   TelemetryOverviewData,
-  ServiceTopologyData
+  ServiceTopologyData,
+  CorrelationGroup,
 } from '../types';
 
 export const MOCK_SERVICES: ServiceItem[] = [
@@ -929,3 +930,193 @@ export const MOCK_SETTINGS: SystemSettings = {
     { id: 'usr-3', name: 'David Kim', email: 'david.kim@acme.corp', role: 'Backend Engineer (Read-Only)', twoFactorEnforced: true, lastActive: '2h ago' },
   ],
 };
+
+export const MOCK_CORRELATION_GROUP: CorrelationGroup = {
+  id: 'cg-8492-aurora-cascade',
+  project_id: 'proj-core-ecommerce',
+  correlation_key: '5f9a2b8e4c7d1e0a9b3c5d7e',
+  time_window_start: '2026-11-06T10:01:45Z',
+  time_window_end: '2026-11-06T10:04:12Z',
+  status: 'ACTIVE',
+  summary: 'Correlated 3 cross-service anomalies across PostgreSQL Primary, Payment Service, and Order Service.',
+  confidence_score: 0.94,
+  topology_complete: true,
+  events_count: 3,
+  participating_events: [
+    {
+      event_id: 'ev-pg-01',
+      service_id: 'svc-postgres',
+      service_name: 'PostgreSQL Primary (Aurora)',
+      service_identifier: 'db:aurora-cluster-leader-az1',
+      metric_name: 'latency',
+      observed_value: 2400.0,
+      expected_baseline: 120.0,
+      deviation_pct: 1900.0,
+      severity: 'critical',
+      occurred_at: '2026-11-06T10:01:45Z',
+      relevance_score: 1.0,
+      correlation_reason: 'Initiating anomaly in correlation window: database connection pool lock contention.',
+    },
+    {
+      event_id: 'ev-pay-02',
+      service_id: 'svc-3',
+      service_name: 'Payment Service',
+      service_identifier: 'svc:stripe-ledger-adapter',
+      metric_name: 'latency',
+      observed_value: 1420.0,
+      expected_baseline: 110.0,
+      deviation_pct: 1190.9,
+      severity: 'critical',
+      occurred_at: '2026-11-06T10:02:30Z',
+      relevance_score: 0.95,
+      correlation_reason: 'Downstream cascade: caller of failing upstream PostgreSQL Primary (+45s latency delta).',
+    },
+    {
+      event_id: 'ev-ord-03',
+      service_id: 'svc-2',
+      service_name: 'Order Service',
+      service_identifier: 'svc:order-orchestration',
+      metric_name: 'error_rate',
+      observed_value: 4.12,
+      expected_baseline: 0.15,
+      deviation_pct: 2646.6,
+      severity: 'high',
+      occurred_at: '2026-11-06T10:03:15Z',
+      relevance_score: 0.90,
+      correlation_reason: 'Downstream cascade: caller of failing upstream Payment Service (+90s delta, HTTP 504 timeouts).',
+    },
+  ],
+  ranked_candidates: [
+    {
+      rank: 1,
+      service_id: 'svc-postgres',
+      service_slug: 'postgres',
+      service_name: 'PostgreSQL Primary (Aurora)',
+      service_identifier: 'db:aurora-cluster-leader-az1',
+      score: 0.945,
+      confidence: 'HIGH',
+      is_probable_root_cause: true,
+      breakdown: {
+        temporal_precedence: {
+          score: 1.0,
+          weight: 0.35,
+          weighted_score: 0.35,
+          reason: 'Anomaly occurred earliest in window at 10:01:45 UTC (+0.0s, preceding payment and order anomalies).',
+        },
+        topological_position: {
+          score: 1.0,
+          weight: 0.35,
+          weighted_score: 0.35,
+          reason: 'Pure upstream dependency for 2 failing services; depends on 0 failing upstream services.',
+        },
+        blast_radius: {
+          score: 1.0,
+          weight: 0.15,
+          weighted_score: 0.15,
+          reason: 'Explains 2 of 2 (100.0%) other affected services in the correlation cascade.',
+        },
+        severity_magnitude: {
+          score: 0.967,
+          weight: 0.15,
+          weighted_score: 0.145,
+          reason: 'CRITICAL severity with peak metric deviation of +1900.0% from baseline.',
+        },
+      },
+      supporting_evidence: [
+        'First anomaly observed at 10:01:45 UTC on metric latency (value: 2400.0ms).',
+        'Direct upstream dependency for Payment Service and Order Service.',
+        'Total 1 anomaly events registered for service in this time window.',
+      ],
+      limitations: [
+        'Probable root-cause candidate inferred from temporal precedence and topological upstream position. Telemetry correlation does not constitute proven physical causation; verify host health and logs.',
+      ],
+    },
+    {
+      rank: 2,
+      service_id: 'svc-3',
+      service_slug: 'payment-service',
+      service_name: 'Payment Service',
+      service_identifier: 'svc:stripe-ledger-adapter',
+      score: 0.655,
+      confidence: 'MEDIUM',
+      is_probable_root_cause: false,
+      breakdown: {
+        temporal_precedence: {
+          score: 0.693,
+          weight: 0.35,
+          weighted_score: 0.243,
+          reason: 'First anomalous event occurred at 10:02:30 UTC (+45.0s after group start).',
+        },
+        topological_position: {
+          score: 0.75,
+          weight: 0.35,
+          weighted_score: 0.263,
+          reason: 'Intermediate node in failure cascade: upstream of 1 failing service, but depends on 1 failing upstream service.',
+        },
+        blast_radius: {
+          score: 0.50,
+          weight: 0.15,
+          weighted_score: 0.075,
+          reason: 'Explains 1 of 2 (50.0%) other affected services in group.',
+        },
+        severity_magnitude: {
+          score: 0.967,
+          weight: 0.15,
+          weighted_score: 0.145,
+          reason: 'CRITICAL severity with peak metric deviation of +1190.9%.',
+        },
+      },
+      supporting_evidence: [
+        'First anomaly observed at 10:02:30 UTC on metric latency (value: 1420.0ms).',
+        'Direct upstream dependency for Order Service.',
+      ],
+      limitations: [
+        'Probable root-cause candidate inferred from temporal precedence and topological upstream position. Telemetry correlation does not constitute proven physical causation; verify host health and logs.',
+      ],
+    },
+    {
+      rank: 3,
+      service_id: 'svc-2',
+      service_slug: 'order-service',
+      service_name: 'Order Service',
+      service_identifier: 'svc:order-orchestration',
+      score: 0.285,
+      confidence: 'LOW',
+      is_probable_root_cause: false,
+      breakdown: {
+        temporal_precedence: {
+          score: 0.387,
+          weight: 0.35,
+          weighted_score: 0.135,
+          reason: 'First anomalous event occurred at 10:03:15 UTC (+90.0s after group start).',
+        },
+        topological_position: {
+          score: 0.10,
+          weight: 0.35,
+          weighted_score: 0.035,
+          reason: 'Downstream caller service: depends on failing upstream services and explains 0 other failing nodes.',
+        },
+        blast_radius: {
+          score: 0.0,
+          weight: 0.15,
+          weighted_score: 0.0,
+          reason: 'Zero downstream blast radius explainable by topology.',
+        },
+        severity_magnitude: {
+          score: 0.767,
+          weight: 0.15,
+          weighted_score: 0.115,
+          reason: 'HIGH severity with peak metric deviation of +2646.6%.',
+        },
+      },
+      supporting_evidence: [
+        'First anomaly observed at 10:03:15 UTC on metric error_rate (value: 4.12%).',
+      ],
+      limitations: [
+        'Probable root-cause candidate inferred from temporal precedence and topological upstream position. Telemetry correlation does not constitute proven physical causation; verify host health and logs.',
+      ],
+    },
+  ],
+  created_at: '2026-11-06T10:04:15Z',
+};
+

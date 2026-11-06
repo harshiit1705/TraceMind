@@ -22,6 +22,18 @@ class Service(Base, UUIDMixin, TimestampMixin):
     project = relationship("Project", back_populates="services")
     anomaly_baselines = relationship("AnomalyBaseline", back_populates="service", cascade="all, delete-orphan")
     anomaly_events = relationship("AnomalyEvent", back_populates="service", cascade="all, delete-orphan")
+    upstream_dependencies = relationship(
+        "ServiceDependency",
+        foreign_keys="ServiceDependency.source_service_id",
+        back_populates="source_service",
+        cascade="all, delete-orphan",
+    )
+    downstream_dependents = relationship(
+        "ServiceDependency",
+        foreign_keys="ServiceDependency.target_service_id",
+        back_populates="target_service",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         UniqueConstraint("project_id", "slug", name="uq_project_service_slug"),
