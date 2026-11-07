@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import List
+from typing import List, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # Telemetry and Demo data configuration
     DEMO_MODE: bool = Field(default=True, description="Enable deterministic simulated telemetry providers")
     DEFAULT_PROJECT_SLUG: str = "core-ecommerce"
+
+    # Google Gemini AI Provider Configuration
+    GEMINI_API_KEY: Optional[str] = Field(default=None, description="Google Gemini API key for incident investigation")
+    GEMINI_MODEL: str = Field(default="gemini-3.8-flash", description="Stable Gemini model for root-cause synthesis")
+    GEMINI_TIMEOUT_SECONDS: int = Field(default=25, description="Timeout in seconds for Gemini API investigation requests")
+    INVESTIGATION_PROMPT_VERSION: str = "v1.0"
+    INVESTIGATION_SCHEMA_VERSION: str = "v1.0"
 
     model_config = SettingsConfigDict(
         env_file=".env",

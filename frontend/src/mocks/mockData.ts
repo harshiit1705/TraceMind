@@ -10,6 +10,8 @@ import {
   TelemetryOverviewData,
   ServiceTopologyData,
   CorrelationGroup,
+  GroundedInvestigationResponse,
+  ProjectItem,
 } from '../types';
 
 export const MOCK_SERVICES: ServiceItem[] = [
@@ -1119,4 +1121,139 @@ export const MOCK_CORRELATION_GROUP: CorrelationGroup = {
   ],
   created_at: '2026-11-06T10:04:15Z',
 };
+
+export const MOCK_PROJECTS: ProjectItem[] = [
+  {
+    id: 'proj-core-ecommerce',
+    name: 'Core E-Commerce & Payments',
+    slug: 'core-ecommerce',
+    environment: 'production',
+    description: 'Mission-critical distributed payment settlement and checkout processing fleet.',
+    is_demo: true,
+  },
+];
+
+export const MOCK_GROUNDED_INVESTIGATION: GroundedInvestigationResponse = {
+  id: 'inv-8492-gemini-grounded',
+  correlation_group_id: 'cg-8492-aurora-cascade',
+  incident_id: null,
+  provider: 'google-gemini',
+  model_name: 'gemini-3.8-flash',
+  prompt_version: 'v1.0',
+  schema_version: 'v1.0',
+  status: 'COMPLETED',
+  evidence_hash: 'sha256:7f9a2b8e4c7d1e0a9b3c5d7e8f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a',
+  result: {
+    incident_summary: 'Connection pool saturation on PostgreSQL Primary (Aurora) at 10:01:45 UTC triggered a cascade failure causing downstream payment processing latency and checkout errors.',
+    timeline: [
+      {
+        timestamp: '2026-11-06T10:01:45Z',
+        event_id: 'ev-pg-01',
+        service_id: 'svc-postgres',
+        service_name: 'PostgreSQL Primary (Aurora)',
+        metric_name: 'latency',
+        observation: 'Database connection pool lock contention caused latency spike to 2400.0ms (+1900.0% deviation).',
+        severity: 'critical',
+      },
+      {
+        timestamp: '2026-11-06T10:02:30Z',
+        event_id: 'ev-pay-02',
+        service_id: 'svc-3',
+        service_name: 'Payment Service',
+        metric_name: 'latency',
+        observation: 'Downstream latency degradation to 1420.0ms while waiting on database query responses.',
+        severity: 'critical',
+      },
+      {
+        timestamp: '2026-11-06T10:03:15Z',
+        event_id: 'ev-ord-03',
+        service_id: 'svc-2',
+        service_name: 'Order Service',
+        metric_name: 'error_rate',
+        observation: 'HTTP 504 Gateway Timeouts from Payment Service escalated Order Service error rate to 4.12%.',
+        severity: 'high',
+      },
+    ],
+    root_cause_analysis: {
+      candidate_id: 'svc-postgres',
+      service_id: 'svc-postgres',
+      service_name: 'PostgreSQL Primary (Aurora)',
+      explanation: 'Analysis confirms PostgreSQL Primary (Aurora) as the initiating node. Long-running transactions held exclusive locks on orders_ledger partitions, exhausting the 1000-connection pool and propagating timeouts downstream through Payment Service to Order Service.',
+      contributing_factors: [
+        'Exclusive lock contention on table orders_ledger',
+        'Connection pool starvation (98% saturation)',
+        'Lack of aggressive acquisition timeout on checkout transaction queries',
+      ],
+    },
+    evidence_references: [
+      {
+        source_record_type: 'anomaly_event',
+        source_id: 'ev-pg-01',
+        supported_field: 'observed_value',
+        summary_citation: 'Primary latency spiked to 2400.0ms against baseline 120.0ms at 10:01:45 UTC.',
+      },
+      {
+        source_record_type: 'service_dependency',
+        source_id: 'dep-order-payment',
+        supported_field: 'dependency_type',
+        summary_citation: 'Direct synchronous RPC dependency from Order Service to Payment Service explains downstream cascade.',
+      },
+      {
+        source_record_type: 'baseline',
+        source_id: 'base-pg-latency',
+        supported_field: 'deviation_pct',
+        summary_citation: 'Metric latency exceeded baseline mean by +1900.0% with critical severity.',
+      },
+    ],
+    uncertainties_and_gaps: [
+      {
+        category: 'unobserved_metric',
+        description: 'Detailed lock wait duration per SQL query PID was unobserved in the aggregated telemetry package.',
+        impact_on_confidence: 'Minor: Aggregate connection count and latency confirm saturation, but exact PID signatures require direct database inspection.',
+      },
+    ],
+    prioritized_investigation_steps: [
+      {
+        step_number: 1,
+        target_service: 'PostgreSQL Primary (Aurora)',
+        action: 'Query pg_stat_activity to identify active PIDs in idle in transaction state.',
+        purpose: 'Isolate the specific long-running transaction holding table locks on orders_ledger.',
+      },
+      {
+        step_number: 2,
+        target_service: 'Payment Service',
+        action: 'Inspect thread pool saturation metrics and connection checkout queue length.',
+        purpose: 'Verify thread recovery once database connection starvation is mitigated.',
+      },
+    ],
+    remediation_recommendations: [
+      {
+        title: 'Terminate Hung Database Transactions and Increase Pool Leeway',
+        action_type: 'restart',
+        target_service: 'PostgreSQL Primary (Aurora)',
+        description: 'Terminate idle transactions older than 300 seconds and temporarily increase connection pool capacity.',
+        risk_level: 'MEDIUM',
+        preconditions: [
+          'Verify replication lag on read replicas is under 5 seconds',
+          'Ensure write traffic can safely retry idempotently',
+        ],
+        rollback_procedure: 'Restart connection pooler proxy if connections remain hung after query termination.',
+        requires_human_approval: true,
+        command_snippet: null,
+      },
+    ],
+  },
+  investigation_json: null,
+  prompt_tokens: 1420,
+  completion_tokens: 890,
+  total_tokens: 2310,
+  latency_ms: 2420,
+  error_message: null,
+  started_at: '2026-11-06T10:04:16Z',
+  completed_at: '2026-11-06T10:04:18Z',
+  created_at: '2026-11-06T10:04:18Z',
+  updated_at: '2026-11-06T10:04:18Z',
+  is_demo: false,
+};
+
 

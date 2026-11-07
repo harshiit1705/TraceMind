@@ -1,0 +1,64 @@
+{
+  "Scenario 1 (Group without investigation)": {
+    "status": "PASS",
+    "http_calls": [
+      "GET http://localhost:8000/api/v1/projects",
+      "OPTIONS http://localhost:8000/api/v1/projects",
+      "GET http://localhost:8000/api/v1/correlations?project_id=e93c597f-147e-4ef0-b210-8f7911609527",
+      "OPTIONS http://localhost:8000/api/v1/correlations?project_id=e93c597f-147e-4ef0-b210-8f7911609527",
+      "GET http://localhost:8000/api/v1/correlations/ee77a3b6-483b-4aa3-baa7-18d4845b6756/investigation",
+      "OPTIONS http://localhost:8000/api/v1/correlations/ee77a3b6-483b-4aa3-baa7-18d4845b6756/investigation"
+    ],
+    "get_endpoint_called": true,
+    "get_status_code": 200,
+    "post_generate_calls": 0,
+    "gemini_invoked": false,
+    "empty_state_displayed": true
+  },
+  "Scenario 2 (Group with COMPLETED investigation)": {
+    "status": "PASS",
+    "http_calls": [
+      "GET http://localhost:8000/api/v1/projects",
+      "GET http://localhost:8000/api/v1/correlations?project_id=e93c597f-147e-4ef0-b210-8f7911609527",
+      "GET http://localhost:8000/api/v1/correlations/1f9bc6e7-55df-4b5a-90ba-88327bd7d12e/investigation",
+      "OPTIONS http://localhost:8000/api/v1/correlations/1f9bc6e7-55df-4b5a-90ba-88327bd7d12e/investigation"
+    ],
+    "get_endpoint_called": true,
+    "get_status_code": 200,
+    "post_generate_calls": 0,
+    "gemini_invoked": false,
+    "all_sections_rendered": true
+  },
+  "Scenario 3 (Group with FAILED investigation & Retry)": {
+    "status": "PASS",
+    "failure_state_displayed": true,
+    "retry_button_clicked": true,
+    "post_generate_calls_on_retry": 1,
+    "post_status_code": 503,
+    "note": "Returned 503 as expected since GEMINI_API_KEY is unconfigured"
+  },
+  "Scenario 4 (Group with RUNNING investigation)": {
+    "status": "PASS",
+    "running_card_displayed": true,
+    "action_button_disabled": true,
+    "post_generate_calls": 0
+  },
+  "Scenario 5 (Generate click & duplicate prevention)": {
+    "status": "PASS",
+    "button_found": true,
+    "attempted_rapid_clicks": 5,
+    "dispatched_clicks": 5,
+    "exact_post_generate_calls": 1,
+    "post_status_code": 503
+  },
+  "Scenario 6 (Page refresh is strictly read-only)": {
+    "status": "PASS",
+    "get_investigation_calls": 1,
+    "post_generate_calls": 0
+  },
+  "Scenario 7 (Legacy Demo INC-8492 Banner)": {
+    "status": "PASS",
+    "legacy_banner_rendered": true,
+    "disclaimer_text_rendered": true
+  }
+}

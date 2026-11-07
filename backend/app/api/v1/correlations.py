@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -12,10 +12,16 @@ from app.schemas.correlation import (
     CorrelationGroupResponse,
     RootCauseCandidateResponse,
 )
+from app.schemas.investigation import GroundedInvestigationResponse
 from app.services.correlation.service import (
     CorrelationGroupNotFoundError,
     CorrelationService,
     ProjectNotFoundError,
+)
+from app.services.investigation.service import (
+    CorrelationGroupNotFoundError as InvCorrelationGroupNotFoundError,
+    InvestigationService,
+    ProjectIsolationError,
 )
 
 router = APIRouter(prefix="/correlations", tags=["Anomaly Correlations & Root Cause"])
@@ -120,4 +126,59 @@ def get_root_cause_candidates(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         )
+
+
+@router.get(
+    "/{correlation_group_id}/investigation",
+    response_model=Optional[GroundedInvestigationResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get latest persisted AI investigation for a correlation group without generation",
+)
+def get_correlation_investigation(
+    correlation_group_id: UUID,
+    x_project_id: Optional[str] = Header(None, alias="X-Project-Id", description="Optional project context header"),
+    db: Session = Depends(get_db),
+) -> Optional[GroundedInvestigationResponse]:
+    """Retrieve the latest persisted investigation for a correlation group in a strictly read-only manner.
+    
+    Guarantees:
+    - Never invokes Gemini or AI provider.
+    - Never creates or updates database records.
+    - Validates that correlation group exists (404 if missing).
+    - Validates project isolation if X-Project-Id header is supplied (403 if mismatched).
+    - Returns 200 with null body if no investigation exists for the group.
+    - Returns full GroundedInvestigationResponse if an investigation exists (COMPLETED, FAILED, RUNNING, PENDING).
+    """
+    expected_proj_uuid: Optional[UUID] = None
+    if x_project_id:
+        try:
+            expected_proj_uuid = UUID(x_project_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid X-Project-Id header format. Must be a valid UUID.",
+            )
+
+    inv_service = InvestigationService(db)
+    try:
+        inv = inv_service.get_investigation_for_correlation_group(
+            correlation_group_id,
+            expected_project_id=expected_proj_uuid,
+        )
+    except (CorrelationGroupNotFoundError, InvCorrelationGroupNotFoundError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+    except ProjectIsolationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+
+    if not inv:
+        return None
+
+    return GroundedInvestigationResponse.model_validate(inv)
+
 

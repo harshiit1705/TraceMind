@@ -7,4 +7,4 @@ export * from './postmortem';
 export * from './settings';
 export * from './telemetry';
 export * from './correlation';
-
+export * from './project';

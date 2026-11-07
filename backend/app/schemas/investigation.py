@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from app.schemas.common import InvestigationStatus
 from app.schemas.finding import FindingResponse
 from app.schemas.recommendation import RecommendationResponse
@@ -204,9 +204,13 @@ class InvestigationResult(BaseModel):
 
 class InvestigationGenerateRequest(BaseModel):
     """Request payload to initiate grounded incident investigation."""
+    model_config = ConfigDict(extra="forbid")
+
     correlation_group_id: UUID = Field(..., description="Correlation group to investigate")
-    focus_prompt: Optional[str] = Field(default=None, max_length=500, description="Optional SRE query focus")
-    model_name: Optional[str] = Field(default="gemini-2.0-flash", max_length=64)
+    force_regenerate: bool = Field(
+        default=False,
+        description="Force re-running investigation even if an existing COMPLETED investigation exists",
+    )
 
 
 class GroundedInvestigationResponse(BaseModel):
@@ -221,6 +225,7 @@ class GroundedInvestigationResponse(BaseModel):
     status: str
     evidence_hash: Optional[str] = None
     result: Optional[InvestigationResult] = None
+    investigation_json: Optional[Dict[str, Any]] = None
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
@@ -232,6 +237,41 @@ class GroundedInvestigationResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_result_from_json(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "result" not in data and "investigation_json" in data:
+                data["result"] = data["investigation_json"]
+            elif "investigation_json" not in data and "result" in data:
+                data["investigation_json"] = data["result"]
+            return data
+        elif hasattr(data, "investigation_json"):
+            raw = getattr(data, "investigation_json")
+            return {
+                "id": getattr(data, "id"),
+                "correlation_group_id": getattr(data, "correlation_group_id", None),
+                "incident_id": getattr(data, "incident_id", None),
+                "provider": getattr(data, "provider", "google-gemini"),
+                "model_name": getattr(data, "model_name", "gemini-2.0-flash"),
+                "prompt_version": getattr(data, "prompt_version", "v1.0"),
+                "schema_version": getattr(data, "schema_version", "v1.0"),
+                "status": getattr(data, "status", "PENDING"),
+                "evidence_hash": getattr(data, "evidence_hash", None),
+                "result": raw,
+                "investigation_json": raw,
+                "prompt_tokens": getattr(data, "prompt_tokens", 0) or 0,
+                "completion_tokens": getattr(data, "completion_tokens", 0) or 0,
+                "total_tokens": getattr(data, "total_tokens", 0) or 0,
+                "latency_ms": getattr(data, "latency_ms", 0) or 0,
+                "error_message": getattr(data, "error_message", None),
+                "started_at": getattr(data, "started_at", None),
+                "completed_at": getattr(data, "completed_at", None),
+                "created_at": getattr(data, "created_at", None),
+                "updated_at": getattr(data, "updated_at", None),
+            }
+        return data
 
 
 # --- Legacy Phase 2.3A Seed Schemas ---
