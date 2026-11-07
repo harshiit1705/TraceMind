@@ -739,3 +739,61 @@ def test_multiple_independent_incidents_in_same_window(db_session: Session):
     assert groups[0].correlation_key != groups[1].correlation_key
     assert groups[0].time_window_start != groups[1].time_window_start
 
+
+def test_identical_timestamps_secondary_ordering_determinism(db_session: Session):
+    """Multiple anomaly events with identical timestamps must order deterministically by AnomalyEvent.id.asc()."""
+    proj = db_session.query(Project).filter_by(slug="core-ecommerce").first()
+    inv_svc = db_session.query(Service).filter_by(project_id=proj.id, slug="inventory-service").first()
+    order_svc = db_session.query(Service).filter_by(project_id=proj.id, slug="order-service").first()
+
+    # Identical microsecond timestamp
+    t_exact = datetime(2026, 11, 7, 6, 0, 0, 123456, tzinfo=timezone.utc)
+
+    # Deterministic UUIDs to test ordering
+    id_low = UUID("11111111-1111-1111-1111-111111111111")
+    id_high = UUID("99999999-9999-9999-9999-999999999999")
+
+    # Insert id_high first, then id_low to ensure DB insertion order does not dictate evaluation order
+    ev_high = AnomalyEvent(
+        id=id_high,
+        project_id=proj.id,
+        service_id=order_svc.id,
+        metric_name="latency",
+        observed_value=800.0,
+        expected_baseline=80.0,
+        deviation_pct=900.0,
+        severity="high",
+        detection_method="rolling_average",
+        occurred_at=t_exact,
+        status="open",
+    )
+    ev_low = AnomalyEvent(
+        id=id_low,
+        project_id=proj.id,
+        service_id=inv_svc.id,
+        metric_name="latency",
+        observed_value=500.0,
+        expected_baseline=50.0,
+        deviation_pct=900.0,
+        severity="high",
+        detection_method="rolling_average",
+        occurred_at=t_exact,
+        status="open",
+    )
+    db_session.add_all([ev_high, ev_low])
+    db_session.commit()
+
+    engine = CorrelationEngine(db_session)
+    groups = engine.evaluate(
+        project_id=proj.id,
+        start_time=t_exact - timedelta(minutes=1),
+        end_time=t_exact + timedelta(minutes=1),
+    )
+
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.events_count == 2
+    # Verify that in participating_events, the event with id_low is ordered first
+    assert g.participating_events[0].event_id == id_low
+    assert g.participating_events[1].event_id == id_high
+

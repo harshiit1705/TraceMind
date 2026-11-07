@@ -76,6 +76,10 @@ class CorrelationGroup(Base, UUIDMixin, TimestampMixin):
         cascade="all, delete-orphan",
         order_by="RootCauseCandidate.rank",
     )
+    investigations = relationship(
+        "Investigation",
+        back_populates="correlation_group",
+    )
 
     __table_args__ = (
         UniqueConstraint(

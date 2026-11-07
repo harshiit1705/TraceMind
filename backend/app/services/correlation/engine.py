@@ -68,7 +68,7 @@ class CorrelationEngine:
                 AnomalyEvent.occurred_at >= start_time,
                 AnomalyEvent.occurred_at <= end_time,
             )
-            .order_by(AnomalyEvent.occurred_at.asc())
+            .order_by(AnomalyEvent.occurred_at.asc(), AnomalyEvent.id.asc())
             .limit(active_config.max_events)
         )
         anomaly_events = events_query.all()
@@ -173,7 +173,7 @@ class CorrelationEngine:
                             q.append(neighbor)
 
             cluster_evs = [anomaly_events[idx] for idx in cluster_ev_indices]
-            cluster_evs.sort(key=lambda e: e.occurred_at)
+            cluster_evs.sort(key=lambda e: (e.occurred_at, e.id))
             event_clusters.append(cluster_evs)
 
         # 6. Form Correlation Groups
