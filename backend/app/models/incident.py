@@ -9,6 +9,7 @@ class Incident(Base, UUIDMixin, TimestampMixin):
 
     project_id = Column(GUID, ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
     incident_number = Column(String(32), unique=True, index=True, nullable=False)  # e.g., INC-8492
+    correlation_group_id = Column(GUID, ForeignKey("correlation_groups.id", ondelete="SET NULL"), unique=True, index=True, nullable=True)
     title = Column(String(256), nullable=False)
     severity = Column(String(32), index=True, nullable=False)  # CRITICAL, HIGH, MEDIUM, LOW
     status = Column(String(32), index=True, nullable=False)    # INVESTIGATING, ACKNOWLEDGED, MITIGATED, RESOLVED
@@ -23,6 +24,7 @@ class Incident(Base, UUIDMixin, TimestampMixin):
     is_demo = Column(Boolean, default=True, nullable=False)
 
     project = relationship("Project", back_populates="incidents")
+    correlation_group = relationship("CorrelationGroup", back_populates="incidents")
     events = relationship("IncidentEvent", back_populates="incident", cascade="all, delete-orphan", order_by="IncidentEvent.timestamp.asc()")
     investigations = relationship("Investigation", back_populates="incident", cascade="all, delete-orphan")
     evidence_items = relationship("Evidence", back_populates="incident", cascade="all, delete-orphan")

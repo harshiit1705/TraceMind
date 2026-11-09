@@ -1,6 +1,6 @@
 import { SeverityLevel } from './common';
 
-export type IncidentStatus = 'INVESTIGATING' | 'ACKNOWLEDGED' | 'MITIGATED' | 'RESOLVED';
+export type IncidentStatus = 'DETECTED' | 'INVESTIGATING' | 'ACKNOWLEDGED' | 'MITIGATED' | 'RESOLVED';
 
 export interface ImpactedEntity {
   name: string;
@@ -37,6 +37,13 @@ export interface IncidentItem {
   correlatedTracesCount?: number;
   aiRemediationAvailable?: boolean;
   affectedServices: string[];
+  correlationGroupId?: string | null;
+  correlation_group_id?: string | null;
+  isDemo?: boolean;
+  is_demo?: boolean;
+  summary?: string;
+  mitigatedAt?: string | null;
+  resolvedAt?: string | null;
 }
 
 export interface IncidentsKpiStats {

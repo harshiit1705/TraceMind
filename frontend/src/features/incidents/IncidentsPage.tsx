@@ -15,7 +15,7 @@ export const IncidentsPage: React.FC = () => {
 
   // Filters
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'investigating' | 'mitigated' | 'resolved'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'detected' | 'investigating' | 'mitigated' | 'resolved'>('all');
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'high' | 'medium' | 'low'>('all');
 
   useEffect(() => {
@@ -83,6 +83,21 @@ export const IncidentsPage: React.FC = () => {
   const mediumCount = incidents.filter((i) => i.severity === 'MEDIUM').length;
   const lowCount = incidents.filter((i) => i.severity === 'LOW').length;
 
+  const computedKpiStats = useMemo(() => {
+    const active = incidents.filter((i) => i.status !== 'RESOLVED').length;
+    const critical = incidents.filter((i) => i.severity === 'CRITICAL' && i.status !== 'RESOLVED').length;
+    const acked = incidents.filter((i) => i.status === 'ACKNOWLEDGED').length;
+    const resolved = incidents.filter((i) => i.status === 'RESOLVED').length;
+    return {
+      activeCount: active,
+      criticalImpactCount: critical,
+      acknowledgedCount: acked,
+      resolved24hCount: resolved,
+      mttdFormatted: kpiStats?.mttdFormatted ?? '1m 30s',
+      mttrFormatted: kpiStats?.mttrFormatted ?? '14m 20s',
+    };
+  }, [incidents, kpiStats]);
+
   if (loading && incidents.length === 0) {
     return (
       <div className="w-full px-margin-desktop py-margin-desktop">
@@ -149,7 +164,7 @@ export const IncidentsPage: React.FC = () => {
           </div>
           <div className="mt-space-sm flex items-baseline gap-space-xs">
             <span className="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold">
-              {kpiStats?.activeCount ?? 3}
+              {computedKpiStats.activeCount}
             </span>
             <span className="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-error-container text-on-error-container font-medium animate-pulse">
               Live
@@ -174,7 +189,7 @@ export const IncidentsPage: React.FC = () => {
           </div>
           <div className="mt-space-sm flex items-baseline gap-space-xs">
             <span className="font-mono-metric-lg text-mono-metric-lg text-error font-semibold">
-              {kpiStats?.criticalImpactCount ?? 1}
+              {computedKpiStats.criticalImpactCount}
             </span>
             <span className="font-caption-ui text-caption-ui text-error font-semibold">
               Immediate action
@@ -195,7 +210,7 @@ export const IncidentsPage: React.FC = () => {
           </div>
           <div className="mt-space-sm flex items-baseline gap-space-xs">
             <span className="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold">
-              {kpiStats?.acknowledgedCount ?? 2}
+              {computedKpiStats.acknowledgedCount}
             </span>
             <span className="font-caption-ui text-caption-ui text-secondary font-medium">
               Under triage
@@ -216,7 +231,7 @@ export const IncidentsPage: React.FC = () => {
           </div>
           <div className="mt-space-sm flex items-baseline gap-space-xs">
             <span className="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold">
-              {kpiStats?.resolved24hCount ?? 14}
+              {computedKpiStats.resolved24hCount}
             </span>
             <span className="font-mono-caption text-mono-caption text-secondary">+3 vs yesterday</span>
           </div>
@@ -235,7 +250,7 @@ export const IncidentsPage: React.FC = () => {
           </div>
           <div className="mt-space-sm flex items-baseline gap-space-xs">
             <span className="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold">
-              {kpiStats?.mttdFormatted ?? '2m 14s'}
+              {computedKpiStats.mttdFormatted}
             </span>
           </div>
           <div className="mt-2 text-on-surface-variant font-caption-ui text-caption-ui flex items-center gap-1">
@@ -328,6 +343,7 @@ export const IncidentsPage: React.FC = () => {
                   [
                     { id: 'all', label: 'All' },
                     { id: 'active', label: 'Active' },
+                    { id: 'detected', label: 'Detected' },
                     { id: 'investigating', label: 'Investigating' },
                     { id: 'mitigated', label: 'Mitigated' },
                     { id: 'resolved', label: 'Resolved' },
@@ -464,23 +480,38 @@ export const IncidentsPage: React.FC = () => {
                     }`}
                   >
                     <td className="px-space-md py-3.5 align-top">
-                      <div className="flex items-center gap-1.5">
-                        {isCritical ? (
-                          <span className="w-1.5 h-1.5 rounded-full bg-error animate-ping" />
-                        ) : (
+                      <div className="flex flex-col gap-1 items-start">
+                        <div className="flex items-center gap-1.5">
+                          {isCritical ? (
+                            <span className="w-1.5 h-1.5 rounded-full bg-error animate-ping" />
+                          ) : (
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                incident.status === 'RESOLVED'
+                                  ? 'bg-outline'
+                                  : incident.status === 'DETECTED'
+                                  ? 'bg-error animate-pulse'
+                                  : 'bg-secondary'
+                              }`}
+                            />
+                          )}
                           <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              incident.status === 'RESOLVED' ? 'bg-outline' : 'bg-secondary'
+                            className={`font-mono-body text-mono-body font-semibold ${
+                              isCritical ? 'text-primary' : 'text-on-surface'
                             }`}
-                          />
+                          >
+                            {incident.id}
+                          </span>
+                        </div>
+                        {incident.correlationGroupId ? (
+                          <span className="font-mono-badge text-[10px] px-1.5 py-0.5 rounded bg-tertiary-container/30 text-tertiary border border-tertiary/20 font-medium">
+                            TELEMETRY LINKED
+                          </span>
+                        ) : (
+                          <span className="font-mono-badge text-[10px] px-1 py-0.5 rounded bg-surface-container text-outline font-medium">
+                            DEMO
+                          </span>
                         )}
-                        <span
-                          className={`font-mono-body text-mono-body font-semibold ${
-                            isCritical ? 'text-primary' : 'text-on-surface'
-                          }`}
-                        >
-                          {incident.id}
-                        </span>
                       </div>
                     </td>
 
@@ -555,7 +586,9 @@ export const IncidentsPage: React.FC = () => {
                     <td className="px-space-md py-3.5 align-top">
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-mono-badge text-mono-badge font-semibold ${
-                          incident.status === 'INVESTIGATING'
+                          incident.status === 'DETECTED'
+                            ? 'bg-error-container text-on-error-container'
+                            : incident.status === 'INVESTIGATING'
                             ? 'bg-primary-fixed text-on-primary-fixed-variant'
                             : incident.status === 'ACKNOWLEDGED'
                             ? 'bg-secondary-container text-on-secondary-fixed'
@@ -569,6 +602,8 @@ export const IncidentsPage: React.FC = () => {
                             ? 'check_circle'
                             : incident.status === 'MITIGATED'
                             ? 'shield'
+                            : incident.status === 'DETECTED'
+                            ? 'sensors'
                             : 'psychology'}
                         </span>
                         {incident.status}

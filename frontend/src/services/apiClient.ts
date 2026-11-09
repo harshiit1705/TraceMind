@@ -5,6 +5,8 @@ import {
   ServiceItem,
   ServicesOverviewStats,
   IncidentItem,
+  IncidentStatus,
+  IncidentEvent,
   IncidentsKpiStats,
   TraceItem,
   AiInvestigationSummary,
@@ -32,6 +34,56 @@ import {
   MOCK_CORRELATION_GROUP,
   MOCK_PROJECTS,
 } from '../mocks/mockData';
+
+function formatActiveDuration(startedAt?: string, endedAt?: string | null): string {
+  if (!startedAt) return '0m';
+  const start = new Date(startedAt).getTime();
+  const end = endedAt ? new Date(endedAt).getTime() : Date.now();
+  const diffSec = Math.max(0, Math.floor((end - start) / 1000));
+  const mins = Math.floor(diffSec / 60);
+  const secs = diffSec % 60;
+  if (mins < 60) return `${mins}m ${secs}s`;
+  const hrs = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return `${hrs}h ${remMins}m`;
+}
+
+function mapBackendIncidentToItem(raw: any): IncidentItem {
+  if (!raw) return raw;
+  if (raw.commander && typeof raw.commander === 'object' && raw.startedAt) {
+    return raw as IncidentItem;
+  }
+  return {
+    id: raw.incident_number || raw.id,
+    title: raw.title || '',
+    severity: (raw.severity || 'MEDIUM').toUpperCase() as any,
+    status: (raw.status || 'DETECTED').toUpperCase() as any,
+    startedAt: raw.started_at
+      ? new Date(raw.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
+      : 'Just now',
+    activeDuration: formatActiveDuration(raw.started_at, raw.resolved_at || raw.mitigated_at),
+    commander: {
+      name: raw.commander_name || 'Alex Chen',
+      role: raw.commander_role || 'Staff SRE',
+    },
+    impactedEntities: (raw.affected_services || []).map((s: string) => ({
+      name: s,
+      metricSummary: 'Correlated cascade',
+      status: (raw.severity === 'CRITICAL' ? 'critical' : 'degraded') as any,
+    })),
+    rootCauseSummary: raw.root_cause_summary || raw.summary || '',
+    correlatedTracesCount: raw.correlation_group_id ? 24 : 0,
+    aiRemediationAvailable: Boolean(raw.correlation_group_id),
+    affectedServices: raw.affected_services || [],
+    correlationGroupId: raw.correlation_group_id || null,
+    correlation_group_id: raw.correlation_group_id || null,
+    isDemo: Boolean(raw.is_demo),
+    is_demo: Boolean(raw.is_demo),
+    summary: raw.summary || '',
+    mitigatedAt: raw.mitigated_at || null,
+    resolvedAt: raw.resolved_at || null,
+  };
+}
 
 class ApiClient {
   private readonly dataMode: DataMode;
@@ -169,7 +221,17 @@ class ApiClient {
   }
 
   public async getIncidents(): Promise<ApiResponse<IncidentItem[]>> {
-    return this.request<IncidentItem[]>('/api/v1/incidents', MOCK_INCIDENTS);
+    const rawRes = await this.request<any>('/api/v1/incidents', MOCK_INCIDENTS);
+    let itemsList: IncidentItem[] = [];
+    if (Array.isArray(rawRes.data)) {
+      itemsList = rawRes.data.map(mapBackendIncidentToItem);
+    } else if (rawRes.data && Array.isArray(rawRes.data.items)) {
+      itemsList = rawRes.data.items.map(mapBackendIncidentToItem);
+    }
+    return {
+      ...rawRes,
+      data: itemsList,
+    };
   }
 
   public async getIncidentsKpiStats(): Promise<ApiResponse<IncidentsKpiStats>> {
@@ -178,7 +240,47 @@ class ApiClient {
 
   public async getIncidentById(id: string): Promise<ApiResponse<IncidentItem | null>> {
     const mock = MOCK_INCIDENTS.find(inc => inc.id.toLowerCase() === id.toLowerCase()) || MOCK_INCIDENTS[0];
-    return this.request<IncidentItem | null>(`/api/v1/incidents/${id}`, mock);
+    const rawRes = await this.request<any>(`/api/v1/incidents/${id}`, mock);
+    return {
+      ...rawRes,
+      data: rawRes.data ? mapBackendIncidentToItem(rawRes.data) : null,
+    };
+  }
+
+  public async updateIncidentStatus(
+    incidentId: string,
+    statusUpdate: { status: IncidentStatus; commander_name?: string; commander_role?: string; comment?: string }
+  ): Promise<ApiResponse<IncidentItem>> {
+    const rawRes = await this.request<any>(
+      `/api/v1/incidents/${incidentId}/status`,
+      null,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(statusUpdate),
+      }
+    );
+    return {
+      ...rawRes,
+      data: mapBackendIncidentToItem(rawRes.data),
+    };
+  }
+
+  public async getIncidentTimeline(incidentId: string): Promise<ApiResponse<IncidentEvent[]>> {
+    const rawRes = await this.request<{ events?: any[] }>(`/api/v1/incidents/${incidentId}/timeline`, { events: [] });
+    const rawEvents = rawRes.data?.events || [];
+    const formattedEvents: IncidentEvent[] = rawEvents.map((e: any) => ({
+      id: e.id || String(Math.random()),
+      timestamp: e.timestamp || new Date().toISOString(),
+      relativeTime: e.timestamp ? new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'recently',
+      title: e.title || '',
+      source: e.source || 'system',
+      description: e.description || '',
+      type: (e.event_type || 'anomaly') as any,
+    }));
+    return {
+      ...rawRes,
+      data: formattedEvents,
+    };
   }
 
   public async getTraces(): Promise<ApiResponse<TraceItem[]>> {

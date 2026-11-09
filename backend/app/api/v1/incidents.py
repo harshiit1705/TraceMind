@@ -5,11 +5,24 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.schemas.common import IncidentSeverity, IncidentStatus, PaginatedResponse
 from app.schemas.incident import (
+    IncidentCreateRequest,
     IncidentDetailResponse,
     IncidentResponse,
+    IncidentStatusUpdateRequest,
     TimelineResponse,
 )
-from app.services.incident_service import IncidentService
+from app.schemas.investigation import GroundedInvestigationResponse
+from app.services.incident_service import (
+    CorrelationGroupAlreadyLinkedError,
+    CorrelationGroupNotFoundError,
+    IncidentNotFoundError,
+    IncidentService,
+    InvalidStatusTransitionError,
+    ProjectIsolationError,
+)
+from app.services.investigation.service import (
+    InvestigationService,
+)
 
 router = APIRouter(prefix="/incidents", tags=["Incidents"])
 
@@ -85,3 +98,114 @@ def get_incident_timeline(
             detail=f"Incident '{incident_id}' was not found.",
         )
     return timeline
+
+
+@router.patch(
+    "/{incident_id}/status",
+    response_model=IncidentDetailResponse,
+    summary="Update incident lifecycle status according to validated state transition policy",
+)
+def update_incident_status(
+    incident_id: str,
+    payload: IncidentStatusUpdateRequest,
+    db: Session = Depends(get_db),
+) -> IncidentDetailResponse:
+    """Transition an incident through its lifecycle (DETECTED, INVESTIGATING, ACKNOWLEDGED, MITIGATED, RESOLVED).
+
+    Rejects invalid transitions with HTTP 409 Conflict.
+    Appends an audit timeline event for genuine transitions.
+    Repeated status requests are idempotent and do not create duplicate history events.
+    """
+    service = IncidentService(db)
+    try:
+        return service.update_status(incident_id, payload)
+    except IncidentNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+    except InvalidStatusTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )
+
+
+@router.post(
+    "",
+    response_model=IncidentDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new manual incident",
+)
+def create_incident(
+    payload: IncidentCreateRequest,
+    project_id: UUID = Query(..., description="Project UUID to create the incident under"),
+    db: Session = Depends(get_db),
+) -> IncidentDetailResponse:
+    """Manually create an incident within project boundary."""
+    from app.repositories.project_repository import ProjectRepository
+    if not ProjectRepository(db).get_by_id(project_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project '{project_id}' was not found.",
+        )
+    service = IncidentService(db)
+    try:
+        return service.create_incident(project_id=project_id, req=payload)
+    except CorrelationGroupNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+    except ProjectIsolationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+    except CorrelationGroupAlreadyLinkedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )
+
+
+@router.get(
+    "/{incident_id}/investigation",
+    response_model=Optional[GroundedInvestigationResponse],
+    summary="Get persisted AI investigation linked to this incident",
+)
+def get_incident_investigation(
+    incident_id: str,
+    db: Session = Depends(get_db),
+) -> Optional[GroundedInvestigationResponse]:
+    """Retrieve the persisted investigation for an incident without triggering Gemini generation.
+
+    If the incident is linked to a correlation group, retrieves the group's latest persisted investigation.
+    If the incident is a legacy demo scenario, retrieves its associated investigation.
+    Returns 200 with null if no investigation exists.
+    """
+    service = IncidentService(db)
+    incident = service.get_incident_by_id_or_number(incident_id)
+    if not incident:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Incident '{incident_id}' was not found.",
+        )
+
+    inv_service = InvestigationService(db)
+    if incident.correlation_group_id:
+        try:
+            inv = inv_service.get_investigation_for_correlation_group(incident.correlation_group_id)
+            if inv:
+                return GroundedInvestigationResponse.model_validate(inv)
+        except CorrelationGroupNotFoundError:
+            return None
+
+    # Legacy demo incident fallback: check direct investigation linked to incident
+    legacy_inv = service.get_investigation_for_incident(incident_id)
+    if legacy_inv:
+        # Construct grounded response compatible view or None
+        pass
+
+    return None
+

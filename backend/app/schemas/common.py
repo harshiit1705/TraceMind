@@ -13,6 +13,7 @@ class IncidentSeverity(str, Enum):
 
 
 class IncidentStatus(str, Enum):
+    DETECTED = "DETECTED"
     INVESTIGATING = "INVESTIGATING"
     ACKNOWLEDGED = "ACKNOWLEDGED"
     MITIGATED = "MITIGATED"

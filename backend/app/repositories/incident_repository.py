@@ -35,6 +35,20 @@ class IncidentRepository:
     def get_by_number(self, incident_number: str) -> Optional[Incident]:
         return self.db.query(Incident).filter(Incident.incident_number.ilike(incident_number)).first()
 
+    def get_by_correlation_group_id(self, correlation_group_id: UUID) -> Optional[Incident]:
+        return self.db.query(Incident).filter(Incident.correlation_group_id == correlation_group_id).first()
+
+    def generate_next_incident_number(self) -> str:
+        rows = self.db.query(Incident.incident_number).all()
+        max_num = 0
+        for (num_str,) in rows:
+            if num_str and num_str.upper().startswith("INC-"):
+                digits = num_str[4:]
+                if digits.isdigit():
+                    max_num = max(max_num, int(digits))
+        next_num = max(max_num + 1, 8493)
+        return f"INC-{next_num}"
+
     def get_events(self, incident_id: UUID) -> List[IncidentEvent]:
         return self.db.query(IncidentEvent).filter(IncidentEvent.incident_id == incident_id).order_by(IncidentEvent.timestamp.asc()).all()
 

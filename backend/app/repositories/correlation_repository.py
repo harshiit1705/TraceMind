@@ -87,7 +87,7 @@ class CorrelationRepository:
                 superseded.append(ag)
         return superseded
 
-    def persist_group(self, evaluated: CorrelationGroupResponse) -> CorrelationGroup:
+    def persist_group(self, evaluated: CorrelationGroupResponse, commit: bool = True) -> CorrelationGroup:
         """Persist a newly discovered correlation group or return existing if already recorded.
         
         Guarantees:
@@ -101,6 +101,7 @@ class CorrelationRepository:
         # 1. Idempotency check: exact match
         existing = self.get_by_key(evaluated.project_id, evaluated.correlation_key)
         if existing:
+            existing._superseded_groups = []
             return existing
 
         target_event_ids = [ev.event_id for ev in evaluated.participating_events]
@@ -108,10 +109,11 @@ class CorrelationRepository:
         # 2. Subsumption check: already contained in an active encompassing group
         encompassing = self.find_encompassing_active_group(evaluated.project_id, target_event_ids)
         if encompassing:
+            encompassing._superseded_groups = []
             return encompassing
 
         # 3. Supersession check: mark narrower active groups as SUPERSEDED
-        self.supersede_subsumed_active_groups(evaluated.project_id, target_event_ids)
+        superseded = self.supersede_subsumed_active_groups(evaluated.project_id, target_event_ids)
 
         new_group_id = uuid4()
         group_row = CorrelationGroup(
@@ -155,7 +157,11 @@ class CorrelationRepository:
             )
             self.db.add(cand_row)
 
-        self.db.commit()
-        self.db.refresh(group_row)
+        if commit:
+            self.db.commit()
+            self.db.refresh(group_row)
+        else:
+            self.db.flush()
+        group_row._superseded_groups = superseded
         return group_row
 

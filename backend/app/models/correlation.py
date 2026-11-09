@@ -80,6 +80,10 @@ class CorrelationGroup(Base, UUIDMixin, TimestampMixin):
         "Investigation",
         back_populates="correlation_group",
     )
+    incidents = relationship(
+        "Incident",
+        back_populates="correlation_group",
+    )
 
     __table_args__ = (
         UniqueConstraint(

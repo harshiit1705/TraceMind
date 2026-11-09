@@ -17,6 +17,8 @@ from app.schemas.incident import (
     IncidentResponse,
     IncidentDetailResponse,
     IncidentEventResponse,
+    IncidentStatusUpdateRequest,
+    IncidentCreateRequest,
     TimelineResponse,
 )
 from app.schemas.evidence import EvidenceResponse, EvidenceListResponse
@@ -61,6 +63,8 @@ __all__ = [
     "IncidentResponse",
     "IncidentDetailResponse",
     "IncidentEventResponse",
+    "IncidentStatusUpdateRequest",
+    "IncidentCreateRequest",
     "TimelineResponse",
     "EvidenceResponse",
     "EvidenceListResponse",

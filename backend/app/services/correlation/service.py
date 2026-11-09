@@ -17,6 +17,7 @@ from app.schemas.correlation import (
     RootCauseCandidateResponse,
 )
 from app.services.correlation.engine import CorrelationEngine
+from app.services.incident_service import IncidentService
 
 
 class ProjectNotFoundError(Exception):
@@ -38,6 +39,7 @@ class CorrelationService:
         self.service_repo = ServiceRepository(db)
         self.correlation_repo = CorrelationRepository(db)
         self.engine = CorrelationEngine(db)
+        self.incident_service = IncidentService(db)
 
     def evaluate_and_persist(
         self,
@@ -60,15 +62,27 @@ class CorrelationService:
         seen_group_ids = set()
         total_anomalies_evaluated = 0
 
-        for group_resp in discovered_groups:
-            total_anomalies_evaluated += group_resp.events_count
-            persisted_row = self.correlation_repo.persist_group(group_resp)
+        try:
+            for group_resp in discovered_groups:
+                total_anomalies_evaluated += group_resp.events_count
+                persisted_row = self.correlation_repo.persist_group(group_resp, commit=False)
 
-            # Avoid duplicates if multiple evaluated clusters resolve to the same encompassing group
-            if persisted_row.id not in seen_group_ids:
-                seen_group_ids.add(persisted_row.id)
-                persisted_resp = self._to_group_response(persisted_row)
-                persisted_group_responses.append(persisted_resp)
+                # Avoid duplicates if multiple evaluated clusters resolve to the same encompassing group
+                if persisted_row.id not in seen_group_ids:
+                    seen_group_ids.add(persisted_row.id)
+                    superseded = getattr(persisted_row, "_superseded_groups", [])
+                    self.incident_service.sync_incident_for_correlation_group(
+                        correlation_group=persisted_row,
+                        superseded_groups=superseded,
+                        commit=False,
+                    )
+                    persisted_resp = self._to_group_response(persisted_row)
+                    persisted_group_responses.append(persisted_resp)
+
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
         now_utc = datetime.now(timezone.utc)
         start_t = request.start_time or (
