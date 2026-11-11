@@ -1,18 +1,18 @@
 """Payment Service (Port 8002).
 
 Responsible for processing payment authorizations, card charges, and settlement.
-Reports latency and error telemetry to TraceMind via /anomalies/evaluate.
+Instrumented with ObservabilityMiddleware for distributed traces, structured logs, and metrics.
 """
 
 import asyncio
 import logging
 import random
-import time
 from contextlib import asynccontextmanager
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException, status
 
 from common.config import config
+from common.middleware import ObservabilityMiddleware
 from common.models import (
     FaultConfig,
     FaultInjectionType,
@@ -21,6 +21,7 @@ from common.models import (
     PaymentStatus,
 )
 from common.telemetry import TelemetryClient
+from common.tracing import get_current_context, start_span
 
 logger = logging.getLogger("demo_microservices.payment")
 
@@ -41,6 +42,11 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+app.add_middleware(
+    ObservabilityMiddleware,
+    service_name="payment-service",
+    telemetry_client=telemetry,
+)
 
 
 async def _apply_fault_injection():
@@ -51,15 +57,11 @@ async def _apply_fault_injection():
             detail=current_fault.error_message or "Payment settlement gateway unavailable",
         )
 
-    # 1. Artificial Latency
     if current_fault.latency_delay_ms > 0:
-        delay_sec = current_fault.latency_delay_ms / 1000.0
-        await asyncio.sleep(delay_sec)
+        await asyncio.sleep(current_fault.latency_delay_ms / 1000.0)
 
-    # 2. Simulated Error Rate
     if current_fault.error_rate_pct > 0:
-        roll = random.uniform(0.0, 100.0)
-        if roll < current_fault.error_rate_pct:
+        if random.uniform(0.0, 100.0) < current_fault.error_rate_pct:
             raise HTTPException(
                 status_code=current_fault.error_status_code or 502,
                 detail=current_fault.error_message or "Payment processor connection timeout",
@@ -77,14 +79,34 @@ async def health_check():
 
 @app.post("/payments/charge", response_model=PaymentResponse, summary="Process payment charge for an order")
 async def charge_payment(req: PaymentRequest):
-    start_time = time.perf_counter()
-    error_occurred = False
-    error_msg = None
-
+    ctx = get_current_context()
     try:
-        # Base realistic processing delay: ~30-45ms for card verification
-        await asyncio.sleep(random.uniform(0.03, 0.045))
-        await _apply_fault_injection()
+        async with start_span(
+            telemetry,
+            operation_name="payment.gateway_charge",
+            span_kind="internal",
+            attributes={
+                "order_id": req.order_id,
+                "payment_method": req.payment_method,
+                "simulated_gateway": True,
+            },
+        ):
+            # Base realistic processing delay: ~30-45ms for card verification
+            await asyncio.sleep(random.uniform(0.03, 0.045))
+            await _apply_fault_injection()
+
+        if current_fault.latency_delay_ms >= 300.0 and ctx:
+            telemetry.record_log(
+                level="WARNING",
+                message=(
+                    f"Payment gateway settlement delayed by {current_fault.latency_delay_ms:.0f}ms "
+                    f"for order {req.order_id}"
+                ),
+                request_id=ctx.request_id,
+                trace_id=ctx.trace_id,
+                span_id=ctx.span_id,
+                attributes={"order_id": req.order_id, "injected_delay_ms": current_fault.latency_delay_ms},
+            )
 
         payment_id = f"pay-{uuid4().hex[:12]}"
         return PaymentResponse(
@@ -94,19 +116,34 @@ async def charge_payment(req: PaymentRequest):
             status=PaymentStatus.SUCCESS,
         )
     except HTTPException as http_exc:
-        error_occurred = True
-        error_msg = str(http_exc.detail)
+        if ctx:
+            telemetry.record_log(
+                level="ERROR",
+                message=f"Payment charge failed for order {req.order_id}: {http_exc.detail}",
+                request_id=ctx.request_id,
+                trace_id=ctx.trace_id,
+                span_id=ctx.span_id,
+                attributes={"order_id": req.order_id, "status_code": http_exc.status_code},
+                exception_type="PaymentGatewayHTTPException",
+                exception_message=str(http_exc.detail),
+            )
         raise
     except Exception as exc:
-        error_occurred = True
-        error_msg = str(exc)
+        if ctx:
+            telemetry.record_log(
+                level="ERROR",
+                message=f"Unexpected payment error for order {req.order_id}: {str(exc)}",
+                request_id=ctx.request_id,
+                trace_id=ctx.trace_id,
+                span_id=ctx.span_id,
+                attributes={"order_id": req.order_id},
+                exception_type=type(exc).__name__,
+                exception_message=str(exc),
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Payment settlement exception: {str(exc)}",
         )
-    finally:
-        elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-        telemetry.record_request(latency_ms=elapsed_ms, is_error=error_occurred)
 
 
 # --- Fault Injection Control Endpoints ---
@@ -140,4 +177,3 @@ if __name__ == "__main__":
         port=config.PAYMENT_SERVICE_PORT,
         reload=False,
     )
-

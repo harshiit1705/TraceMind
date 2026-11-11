@@ -67,6 +67,13 @@ def build_parser() -> argparse.ArgumentParser:
     s_pay.add_argument("--warmup", type=int, default=0, help="Normal warmup requests before fault (default: 0)")
     s_pay.add_argument("--no-correlate", action="store_true", help="Skip automatic correlation trigger after batch")
 
+    # scenario payment-latency
+    s_pay_lat = scenario_sub.add_parser("payment-latency", help="Inject latency spike in Payment Service")
+    s_pay_lat.add_argument("--delay-ms", type=float, default=800.0, help="Artificial delay in ms (default: 800.0)")
+    s_pay_lat.add_argument("--requests", type=int, default=5, help="Number of requests during fault (default: 5)")
+    s_pay_lat.add_argument("--warmup", type=int, default=0, help="Normal warmup requests before fault (default: 0)")
+    s_pay_lat.add_argument("--no-correlate", action="store_true", help="Skip automatic correlation trigger after batch")
+
     # scenario recover
     s_rec = scenario_sub.add_parser("recover", help="Reset all faults and send verification traffic")
     s_rec.add_argument("--count", type=int, default=5, help="Number of requests (default: 5)")
@@ -123,6 +130,14 @@ async def execute_cli(args: argparse.Namespace, runner: Optional[ScenarioRunner]
             return await active_runner.run_payment_error_spike(
                 error_pct=args.error_pct,
                 status_code=args.status_code,
+                requests=args.requests,
+                warmup_count=args.warmup,
+                trigger_correlation=not args.no_correlate,
+            )
+
+        if args.scenario_name == "payment-latency":
+            return await active_runner.run_payment_latency_spike(
+                delay_ms=args.delay_ms,
                 requests=args.requests,
                 warmup_count=args.warmup,
                 trigger_correlation=not args.no_correlate,

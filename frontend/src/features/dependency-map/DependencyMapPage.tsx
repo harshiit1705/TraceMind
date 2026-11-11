@@ -63,13 +63,15 @@ export const DependencyMapPage: React.FC = () => {
 
   // Compute node coordinates based on layout mode
   const getNodeCoordinates = useCallback(
-    (nodeId: string, mode: LayoutMode) => {
+    (nodeId: string, mode: LayoutMode, tier: number = 1, fallbackIdx: number = 0) => {
       const HIERARCHICAL_POSITIONS: Record<string, { x: number; y: number }> = {
         'api-gateway': { x: 30, y: 240 },
         'user-service': { x: 340, y: 70 },
         'order-service': { x: 340, y: 340 },
-        'notification-service': { x: 680, y: 120 },
-        'payment-service': { x: 680, y: 340 },
+        'auth-service': { x: 340, y: 540 },
+        'notification-service': { x: 680, y: 70 },
+        'inventory-service': { x: 680, y: 220 },
+        'payment-service': { x: 680, y: 370 },
         'postgres': { x: 680, y: 550 },
         'stripe-api': { x: 990, y: 280 },
       };
@@ -77,8 +79,10 @@ export const DependencyMapPage: React.FC = () => {
       const RADIAL_POSITIONS: Record<string, { x: number; y: number }> = {
         'postgres': { x: 520, y: 280 },
         'payment-service': { x: 260, y: 160 },
+        'inventory-service': { x: 260, y: 280 },
         'order-service': { x: 520, y: 60 },
         'api-gateway': { x: 780, y: 160 },
+        'auth-service': { x: 780, y: 280 },
         'user-service': { x: 780, y: 400 },
         'notification-service': { x: 520, y: 500 },
         'stripe-api': { x: 260, y: 400 },
@@ -87,16 +91,19 @@ export const DependencyMapPage: React.FC = () => {
       const FORCE_POSITIONS: Record<string, { x: number; y: number }> = {
         'api-gateway': { x: 60, y: 160 },
         'user-service': { x: 200, y: 440 },
+        'auth-service': { x: 200, y: 60 },
         'order-service': { x: 420, y: 180 },
         'notification-service': { x: 640, y: 60 },
-        'payment-service': { x: 740, y: 260 },
+        'inventory-service': { x: 640, y: 380 },
+        'payment-service': { x: 740, y: 240 },
         'postgres': { x: 500, y: 440 },
         'stripe-api': { x: 960, y: 200 },
       };
 
-      if (mode === 'radial') return RADIAL_POSITIONS[nodeId] || { x: 300, y: 300 };
-      if (mode === 'force') return FORCE_POSITIONS[nodeId] || { x: 300, y: 300 };
-      return HIERARCHICAL_POSITIONS[nodeId] || { x: 300, y: 300 };
+      const fallbackPos = { x: 60 + tier * 320, y: 80 + (fallbackIdx % 4) * 150 };
+      if (mode === 'radial') return RADIAL_POSITIONS[nodeId] || fallbackPos;
+      if (mode === 'force') return FORCE_POSITIONS[nodeId] || fallbackPos;
+      return HIERARCHICAL_POSITIONS[nodeId] || fallbackPos;
     },
     []
   );
@@ -110,8 +117,8 @@ export const DependencyMapPage: React.FC = () => {
       rawNodes = rawNodes.filter((n) => n.isAnomalous);
     }
 
-    return rawNodes.map((n) => {
-      const pos = getNodeCoordinates(n.id, layoutMode);
+    return rawNodes.map((n, idx) => {
+      const pos = getNodeCoordinates(n.id, layoutMode, n.tier ?? 1, idx);
       return {
         id: n.id,
         type: 'serviceNode',
@@ -574,7 +581,7 @@ export const DependencyMapPage: React.FC = () => {
                 <Button
                   variant="primary"
                   icon="crisis_alert"
-                  onClick={() => navigate('/incidents/INC-8492')}
+                  onClick={() => navigate('/incidents')}
                 >
                   Open Incidents War Room
                 </Button>

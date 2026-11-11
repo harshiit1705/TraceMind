@@ -8,6 +8,9 @@ from app.api.v1.investigations import router as investigations_router
 from app.api.v1.anomalies import router as anomalies_router
 from app.api.v1.dependencies import router as dependencies_router
 from app.api.v1.correlations import router as correlations_router
+from app.api.v1.telemetry import router as telemetry_router
+from app.api.v1.logs import router as logs_router
+from app.api.v1.traces import router as traces_router
 
 api_v1_router = APIRouter()
 
@@ -20,4 +23,7 @@ api_v1_router.include_router(evidence_router)
 api_v1_router.include_router(investigations_router)
 api_v1_router.include_router(anomalies_router)
 api_v1_router.include_router(correlations_router)
+api_v1_router.include_router(telemetry_router)
+api_v1_router.include_router(logs_router)
+api_v1_router.include_router(traces_router)
 

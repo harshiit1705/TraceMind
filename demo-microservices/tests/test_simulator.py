@@ -161,3 +161,42 @@ async def test_cli_command_execution(wired_scenario_runner):
         await pay_client.aclose()
         await inv_client.aclose()
 
+
+@pytest.mark.asyncio
+async def test_payment_latency_scenario_and_cli(wired_scenario_runner, monkeypatch):
+    runner, order_client, pay_client, inv_client = wired_scenario_runner
+    correlation_calls = []
+
+    async def mock_correlate(window_seconds: int = 300):
+        correlation_calls.append(window_seconds)
+        return {"correlation_groups_count": 1, "total_anomalies_evaluated": 2}
+
+    monkeypatch.setattr(runner, "trigger_correlation_evaluation", mock_correlate)
+    parser = build_parser()
+
+    try:
+        args = parser.parse_args(
+            ["scenario", "payment-latency", "--delay-ms", "150", "--requests", "3", "--no-correlate"]
+        )
+        res = await execute_cli(args, runner=runner)
+        assert res["scenario"] == "payment-latency"
+        assert res["traffic_summary"]["total_requests"] == 3
+        assert res["traffic_summary"]["confirmed"] == 3
+        assert res["traffic_summary"]["avg_latency_ms"] >= 150.0
+        assert res["correlation_result"] is None
+
+        res_corr = await runner.run_payment_latency_spike(
+            delay_ms=140.0,
+            requests=2,
+            settle_delay_sec=0.01,
+            trigger_correlation=True,
+        )
+        assert res_corr["scenario"] == "payment-latency"
+        assert res_corr["traffic_summary"]["avg_latency_ms"] >= 140.0
+        assert len(correlation_calls) == 1
+    finally:
+        await order_client.aclose()
+        await pay_client.aclose()
+        await inv_client.aclose()
+
+

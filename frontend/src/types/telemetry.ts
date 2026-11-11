@@ -3,8 +3,11 @@ import { HealthStatus } from './common';
 export interface TelemetryTimeSeriesPoint {
   time: string;
   timestamp: number;
-  throughputRps: number;
-  baselineThroughputRps: number;
+  throughputRps: number | null;
+  baselineThroughputRps?: number | null;
+  throughputAvailable?: boolean;
+  requestCount?: number;
+  metricSamplesCount?: number;
   errorRatePercent: number;
   p50Ms: number;
   p90Ms: number;
@@ -16,9 +19,14 @@ export interface TelemetryTimeSeriesPoint {
 export interface TelemetryOverviewData {
   timeRange: '15m' | '1h' | '24h';
   points: TelemetryTimeSeriesPoint[];
-  currentThroughputRps: number;
-  meanThroughputRps: number;
-  peakThroughputRps: number;
+  currentThroughputRps: number | null;
+  meanThroughputRps: number | null;
+  peakThroughputRps: number | null;
+  throughputAvailable?: boolean;
+  requestRateStatus?: 'available' | 'no_traffic' | 'insufficient_data';
+  totalRequests?: number;
+  totalMetricSamples?: number;
+  sampleIngestionRatePerSec?: number | null;
   currentErrorRatePercent: number;
   peakErrorRatePercent: number;
   currentP95Ms: number;

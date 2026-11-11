@@ -1,20 +1,20 @@
 """Order Service (Port 8001).
 
 Primary ingress orchestrator for checkout transactions.
-Orchestrates calls to Inventory Service (Port 8003) and Payment Service (Port 8002).
-Reports latency and error telemetry to TraceMind via /anomalies/evaluate.
+Orchestrates calls to Inventory Service (Port 8003) and Payment Service (Port 8002)
+with distributed trace context propagation, structured logging, and metric collection.
 """
 
 import asyncio
 import logging
 import random
-import time
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional
+from typing import Dict, List
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException, status
 
 from common.config import config
+from common.middleware import ObservabilityMiddleware
 from common.models import (
     FaultConfig,
     FaultInjectionType,
@@ -27,12 +27,13 @@ from common.models import (
     PaymentStatus,
 )
 from common.telemetry import TelemetryClient
+from common.tracing import get_current_context
 from services.order_service.client import DownstreamClients, DownstreamServiceError
 
 logger = logging.getLogger("demo_microservices.order")
 
 telemetry = TelemetryClient(service_identifier="order-service")
-clients = DownstreamClients()
+clients = DownstreamClients(telemetry_client=telemetry)
 current_fault = FaultConfig()
 
 # In-memory order storage
@@ -54,6 +55,11 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+app.add_middleware(
+    ObservabilityMiddleware,
+    service_name="order-service",
+    telemetry_client=telemetry,
+)
 
 
 async def _apply_fault_injection():
@@ -64,15 +70,11 @@ async def _apply_fault_injection():
             detail=current_fault.error_message or "Order Service Ingress unavailable",
         )
 
-    # 1. Artificial Latency
     if current_fault.latency_delay_ms > 0:
-        delay_sec = current_fault.latency_delay_ms / 1000.0
-        await asyncio.sleep(delay_sec)
+        await asyncio.sleep(current_fault.latency_delay_ms / 1000.0)
 
-    # 2. Simulated Error Rate
     if current_fault.error_rate_pct > 0:
-        roll = random.uniform(0.0, 100.0)
-        if roll < current_fault.error_rate_pct:
+        if random.uniform(0.0, 100.0) < current_fault.error_rate_pct:
             raise HTTPException(
                 status_code=current_fault.error_status_code or 500,
                 detail=current_fault.error_message or "Internal order orchestration error",
@@ -106,11 +108,9 @@ async def get_order(order_id: str):
 
 @app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED, summary="Create a new order")
 async def create_order(req: OrderCreateRequest):
-    start_time = time.perf_counter()
     order_id = f"ord-{uuid4().hex[:10]}"
     total_amount = round(sum(item.quantity * item.unit_price for item in req.items), 2)
-    error_occurred = False
-    payment_id = None
+    ctx = get_current_context()
 
     try:
         # 1. Order Service self-check / fault injection
@@ -121,7 +121,6 @@ async def create_order(req: OrderCreateRequest):
             InventoryReserveRequest(order_id=order_id, items=req.items)
         )
         if inv_resp.status != InventoryStatus.RESERVED:
-            error_occurred = True
             failed_order = OrderResponse(
                 order_id=order_id,
                 customer_id=req.customer_id,
@@ -146,7 +145,6 @@ async def create_order(req: OrderCreateRequest):
             )
         )
         if pay_resp.status != PaymentStatus.SUCCESS:
-            error_occurred = True
             failed_order = OrderResponse(
                 order_id=order_id,
                 customer_id=req.customer_id,
@@ -161,8 +159,6 @@ async def create_order(req: OrderCreateRequest):
                 detail=f"Payment settlement failed: {pay_resp.error_message}",
             )
 
-        payment_id = pay_resp.payment_id
-
         # 4. Confirmation
         confirmed_order = OrderResponse(
             order_id=order_id,
@@ -170,30 +166,34 @@ async def create_order(req: OrderCreateRequest):
             items=req.items,
             total_amount=total_amount,
             status=OrderStatus.CONFIRMED,
-            payment_id=payment_id,
+            payment_id=pay_resp.payment_id,
         )
         orders_db[order_id] = confirmed_order
         return confirmed_order
 
     except DownstreamServiceError as down_err:
-        error_occurred = True
         logger.warning("Order %s downstream failure from %s: %s", order_id, down_err.service_name, down_err.message)
-        # Propagate as 502/504 Bad Gateway / Gateway Timeout reflecting distributed cascade
+        if ctx:
+            telemetry.record_log(
+                level="ERROR",
+                message=f"Checkout {order_id} failed due to downstream {down_err.service_name}: {down_err.message}",
+                request_id=ctx.request_id,
+                trace_id=ctx.trace_id,
+                span_id=ctx.span_id,
+                attributes={"order_id": order_id, "downstream_service": down_err.service_name, "downstream_status": down_err.status_code},
+                exception_type="DownstreamServiceError",
+                exception_message=down_err.message,
+            )
         http_status = status.HTTP_504_GATEWAY_TIMEOUT if down_err.status_code == 504 else status.HTTP_502_BAD_GATEWAY
         raise HTTPException(status_code=http_status, detail=str(down_err))
     except HTTPException:
-        error_occurred = True
         raise
     except Exception as exc:
-        error_occurred = True
         logger.error("Unhandled exception processing order %s: %s", order_id, str(exc))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal order processing error: {str(exc)}",
         )
-    finally:
-        elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-        telemetry.record_request(latency_ms=elapsed_ms, is_error=error_occurred)
 
 
 # --- Fault Injection Control Endpoints ---
@@ -228,4 +228,3 @@ if __name__ == "__main__":
         port=config.ORDER_SERVICE_PORT,
         reload=False,
     )
-

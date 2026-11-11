@@ -9,8 +9,7 @@ import {
   Tooltip,
   CartesianGrid,
   AreaChart,
-  Area,
-  ReferenceArea
+  Area
 } from 'recharts';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { KpiCard, Button, LoadingSpinner, ErrorState } from '../../components/common';
@@ -86,6 +85,38 @@ export const OverviewPage: React.FC = () => {
     });
   }, [services, serviceSearch, serviceFilter]);
 
+  const formatRps = (val?: number | null) => {
+    if (val === null || val === undefined) return 'Unavailable';
+    const num = Number(val);
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}k req/s`;
+    return `${num.toFixed(1)} req/s`;
+  };
+
+  const requestRateDisplay =
+    telemetry?.requestRateStatus === 'insufficient_data'
+      ? 'Insufficient data'
+      : telemetry?.requestRateStatus === 'no_traffic'
+      ? '0.0 req/s'
+      : formatRps(telemetry?.currentThroughputRps);
+
+  const requestRateSubtitle =
+    telemetry?.requestRateStatus === 'insufficient_data'
+      ? 'Need >=1s span or request_rate sample'
+      : telemetry?.requestRateStatus === 'no_traffic'
+      ? 'No application requests in window'
+      : `Peak: ${formatRps(telemetry?.peakThroughputRps)}`;
+
+  const maxObservedP99Ms = useMemo(() => {
+    const pts = telemetry?.points || [];
+    if (pts.length === 0) return 0;
+    return Math.round(Math.max(...pts.map((p) => Number(p.p99Ms ?? 0))));
+  }, [telemetry]);
+
+  const overallHealthLabel =
+    unhealthyCount > 0 ? 'Unhealthy' : degradedCount > 0 ? 'Degraded' : 'Healthy';
+  const primaryActiveIncident = activeIncidents[0] || null;
+  const warRoomTargetId = primaryActiveIncident?.id || incidents[0]?.id || 'INC-8492';
+
   if (loading && !telemetry) {
     return (
       <div className="w-full px-margin-desktop py-margin-desktop">
@@ -151,13 +182,13 @@ export const OverviewPage: React.FC = () => {
               icon="crisis_alert"
               onClick={() => navigate('/incidents')}
             >
-              Incidents (3)
+              Incidents ({activeIncidents.length})
             </Button>
 
             <Button
               variant="primary"
               icon="auto_awesome"
-              onClick={() => navigate('/incidents/INC-8492')}
+              onClick={() => navigate(`/incidents/${warRoomTargetId}`)}
             >
               Launch War Room
             </Button>
@@ -169,17 +200,20 @@ export const OverviewPage: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-space-sm">
         <KpiCard
           title="Overall Health"
-          value="Degraded"
+          value={overallHealthLabel}
           badge={
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary-container text-on-secondary-fixed-variant font-mono-badge text-mono-badge font-semibold">
               <span className="w-1.5 h-1.5 rounded-full bg-tertiary-container" />
               SLO
             </span>
           }
-          subtitle="99.82% / 99.95% target"
+          subtitle={`${healthyCount}/${totalFleetCount} healthy services`}
           indicator={
             <div className="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden mt-2">
-              <div className="bg-tertiary h-full rounded-full" style={{ width: '82%' }} />
+              <div
+                className="bg-primary h-full rounded-full"
+                style={{ width: `${Math.round((healthyCount / Math.max(1, totalFleetCount)) * 100)}%` }}
+              />
             </div>
           }
         />
@@ -219,87 +253,96 @@ export const OverviewPage: React.FC = () => {
 
         <KpiCard
           title="Error Rate"
-          value={`${telemetry?.currentErrorRatePercent ?? 2.84}%`}
-          valueColor="text-error"
+          value={`${Number(telemetry?.currentErrorRatePercent ?? 0).toFixed(2)}%`}
+          valueColor={(telemetry?.currentErrorRatePercent ?? 0) > 1.0 ? 'text-error' : 'text-on-surface'}
           badge={
             <span className="px-1.5 py-0.5 rounded bg-error-container text-on-error-container font-mono-badge text-mono-badge font-semibold">
-              +1.42%
+              Peak {Number(telemetry?.peakErrorRatePercent ?? 0).toFixed(2)}%
             </span>
           }
-          subtitle="10m deviation spike"
-          trend="Exceeds baseline threshold"
-          trendDirection="up"
+          subtitle="Window error rate"
+          trend={(telemetry?.currentErrorRatePercent ?? 0) > 1.0 ? 'Exceeds 1.0% threshold' : 'Nominal range'}
+          trendDirection={(telemetry?.currentErrorRatePercent ?? 0) > 1.0 ? 'up' : 'neutral'}
         />
 
         <KpiCard
           title="Request Rate"
-          value={`${((telemetry?.currentThroughputRps ?? 42800) / 1000).toFixed(1)}k`}
+          value={requestRateDisplay}
           badge={
             <span className="px-1.5 py-0.5 rounded bg-secondary-container text-on-secondary-fixed-variant font-mono-badge text-mono-badge font-semibold">
-              +4.1%
+              {telemetry?.totalRequests ?? 0} reqs
             </span>
           }
-          subtitle={`Peak: ${((telemetry?.peakThroughputRps ?? 48900) / 1000).toFixed(1)}k req/s`}
-          trend="Normal nominal range"
+          subtitle={requestRateSubtitle}
+          trend={
+            telemetry?.requestRateStatus === 'available'
+              ? `Mean ${formatRps(telemetry?.meanThroughputRps)}`
+              : 'Waiting for request samples'
+          }
           trendDirection="neutral"
         />
 
         <KpiCard
           title="P95 Latency"
-          value={`${telemetry?.currentP95Ms ?? 180} ms`}
-          valueColor="text-tertiary"
+          value={`${Number(telemetry?.currentP95Ms ?? 0).toFixed(1)} ms`}
+          valueColor={(telemetry?.currentP95Ms ?? 0) > 250 ? 'text-tertiary' : 'text-on-surface'}
           badge={
             <span className="px-1.5 py-0.5 rounded bg-surface-container-highest text-tertiary font-mono-badge text-mono-badge font-semibold">
-              Amber
+              P99 {Number(telemetry?.currentP99Ms ?? 0).toFixed(0)}ms
             </span>
           }
-          subtitle={`Baseline ${telemetry?.baselineP95Ms ?? 24} ms`}
-          trend="High tail divergence"
-          trendDirection="up"
+          subtitle={`Baseline ${Number(telemetry?.baselineP95Ms ?? 0).toFixed(1)} ms`}
+          trend={(telemetry?.currentP95Ms ?? 0) > (telemetry?.baselineP95Ms ?? 0) * 2 ? 'Elevated tail latency' : 'Within baseline'}
+          trendDirection={(telemetry?.currentP95Ms ?? 0) > (telemetry?.baselineP95Ms ?? 0) * 2 ? 'up' : 'neutral'}
         />
       </div>
 
       {/* Critical Anomaly Incident Banner */}
-      <div className="p-space-md rounded-xl bg-error-container/40 text-on-error-container border border-error/20 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md">
-        <div className="flex items-start gap-space-sm">
-          <span className="material-symbols-outlined text-[24px] text-error mt-0.5 shrink-0">
-            notification_important
-          </span>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-space-xs flex-wrap">
-              <span className="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-error text-on-error uppercase font-bold">
-                P1 CRITICAL
-              </span>
-              <span className="font-title-md text-title-md font-semibold text-on-surface">
-                INC-8492: Aurora Connection Pool Exhaustion (us-east-1)
-              </span>
-              <span className="font-mono-caption text-mono-caption text-on-surface-variant">
-                Started 14m ago · Active Contagion
-              </span>
+      {primaryActiveIncident && (
+        <div className="p-space-md rounded-xl bg-error-container/40 text-on-error-container border border-error/20 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md">
+          <div className="flex items-start gap-space-sm">
+            <span className="material-symbols-outlined text-[24px] text-error mt-0.5 shrink-0">
+              notification_important
+            </span>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-space-xs flex-wrap">
+                <span className="font-mono-badge text-mono-badge px-1.5 py-0.5 rounded bg-error text-on-error uppercase font-bold">
+                  {primaryActiveIncident.severity}
+                </span>
+                <span className="font-title-md text-title-md font-semibold text-on-surface">
+                  {primaryActiveIncident.id}: {primaryActiveIncident.title}
+                </span>
+                <span className="font-mono-caption text-mono-caption text-on-surface-variant">
+                  Started {primaryActiveIncident.startedAt} · {primaryActiveIncident.activeDuration}
+                </span>
+              </div>
+              <p className="font-body-default text-body-default text-on-surface-variant mt-1">
+                Impacted:{' '}
+                <span className="font-semibold text-on-surface">
+                  {primaryActiveIncident.affectedServices.join(', ') || 'Monitored services'}
+                </span>
+                . {primaryActiveIncident.rootCauseSummary || primaryActiveIncident.summary}
+              </p>
             </div>
-            <p className="font-body-default text-body-default text-on-surface-variant mt-1">
-              Impacted: <span className="font-semibold text-on-surface">Payment Service</span> &amp;{' '}
-              <span className="font-semibold text-on-surface">Order Service</span>. Automated AI remediation suggested RDS pool expansion or terminating idle transaction locks.
-            </p>
+          </div>
+          <div className="flex items-center gap-space-xs shrink-0 w-full md:w-auto justify-end">
+            <Button
+              variant="surface"
+              icon="insights"
+              onClick={() => navigate('/traces')}
+            >
+              Investigate in Traces
+            </Button>
+            <Button
+              variant="danger"
+              icon="auto_awesome"
+              onClick={() => navigate(`/incidents/${primaryActiveIncident.id}`)}
+            >
+              Open War Room
+            </Button>
           </div>
         </div>
-        <div className="flex items-center gap-space-xs shrink-0 w-full md:w-auto justify-end">
-          <Button
-            variant="surface"
-            icon="insights"
-            onClick={() => navigate('/traces')}
-          >
-            Investigate in Traces
-          </Button>
-          <Button
-            variant="danger"
-            icon="auto_awesome"
-            onClick={() => navigate('/incidents/INC-8492')}
-          >
-            Open War Room
-          </Button>
-        </div>
-      </div>
+      )}
 
       {/* 3 Telemetry Time-Series Charts with Recharts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-space-md">
@@ -315,15 +358,15 @@ export const OverviewPage: React.FC = () => {
               </span>
             </div>
             <span className="font-mono-badge text-mono-badge px-2 py-0.5 bg-surface-container text-on-surface-variant rounded">
-              Mean {((telemetry?.meanThroughputRps ?? 44100) / 1000).toFixed(1)}k
+              Mean {formatRps(telemetry?.meanThroughputRps)}
             </span>
           </div>
 
           <div className="w-full h-44 bg-surface-container-low/60 rounded-lg p-2 flex flex-col justify-between">
             <div className="flex justify-between font-mono-caption text-mono-caption text-outline mb-1">
-              <span>Peak: {((telemetry?.peakThroughputRps ?? 48900) / 1000).toFixed(1)}k</span>
+              <span>Peak: {formatRps(telemetry?.peakThroughputRps)}</span>
               <span className="text-primary font-semibold">
-                Current: {((telemetry?.currentThroughputRps ?? 42800) / 1000).toFixed(1)}k
+                Current: {formatRps(telemetry?.currentThroughputRps)}
               </span>
             </div>
             <div className="w-full h-32">
@@ -340,7 +383,7 @@ export const OverviewPage: React.FC = () => {
                     tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
                     stroke="#c7c4d8"
                     tickLine={false}
-                    tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`}
+                    tickFormatter={(val) => (val >= 1000 ? `${(val / 1000).toFixed(0)}k` : `${val}`)}
                   />
                   <Tooltip
                     contentStyle={{
@@ -395,18 +438,20 @@ export const OverviewPage: React.FC = () => {
                 Error Rate (%)
               </span>
               <span className="font-mono-caption text-mono-caption text-on-surface-variant">
-                Scope: {timeRange} • Sharp anomaly spike at 14:18-14:22
+                Scope: {timeRange} • 1.0% error budget threshold
               </span>
             </div>
             <span className="font-mono-badge text-mono-badge px-2 py-0.5 bg-error-container text-on-error-container font-semibold rounded">
-              Spike {telemetry?.peakErrorRatePercent ?? 3.42}%
+              Peak {Number(telemetry?.peakErrorRatePercent ?? 0).toFixed(2)}%
             </span>
           </div>
 
           <div className="w-full h-44 bg-surface-container-low/60 rounded-lg p-2 flex flex-col justify-between">
             <div className="flex justify-between font-mono-caption text-mono-caption text-outline mb-1">
               <span>Threshold: 1.0%</span>
-              <span className="text-error font-semibold">Anomaly Zone Active</span>
+              <span className={(telemetry?.peakErrorRatePercent ?? 0) > 1.0 ? 'text-error font-semibold' : 'text-on-surface-variant'}>
+                {(telemetry?.peakErrorRatePercent ?? 0) > 1.0 ? 'Threshold Breached' : 'Within Threshold'}
+              </span>
             </div>
             <div className="w-full h-32">
               <ResponsiveContainer width="100%" height="100%">
@@ -435,7 +480,6 @@ export const OverviewPage: React.FC = () => {
                     }}
                     formatter={(val: any) => [`${val}%`, 'Error Rate']}
                   />
-                  <ReferenceArea x1="14:18" x2="14:24" fill="#ffdad6" fillOpacity={0.4} />
                   <Area
                     type="monotone"
                     dataKey="errorRatePercent"
@@ -453,9 +497,11 @@ export const OverviewPage: React.FC = () => {
 
           <div className="flex items-center justify-between pt-space-xs font-mono-caption text-mono-caption text-on-surface-variant">
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-error" /> HTTP 5xx / PG Pool Timeout
+              <span className="w-2.5 h-2.5 rounded-full bg-error" /> HTTP 5xx / Application Errors
             </span>
-            <span className="text-error font-medium">Critical Breach (&gt;1.0%)</span>
+            <span className={(telemetry?.currentErrorRatePercent ?? 0) > 1.0 ? 'text-error font-medium' : 'text-on-surface-variant'}>
+              {(telemetry?.currentErrorRatePercent ?? 0) > 1.0 ? 'Breach (>1.0%)' : 'Nominal (<=1.0%)'}
+            </span>
           </div>
         </div>
 
@@ -467,19 +513,19 @@ export const OverviewPage: React.FC = () => {
                 Latency Percentiles (ms)
               </span>
               <span className="font-mono-caption text-mono-caption text-on-surface-variant">
-                P50, P90, P95, P99 divergence during saturation
+                P50, P90, P95, P99 response latency quantiles
               </span>
             </div>
             <span className="font-mono-badge text-mono-badge px-2 py-0.5 bg-surface-container-highest text-tertiary font-semibold rounded">
-              P99: {telemetry?.currentP99Ms ?? 840}ms
+              P99: {Number(telemetry?.currentP99Ms ?? 0).toFixed(1)}ms
             </span>
           </div>
 
           <div className="w-full h-44 bg-surface-container-low/60 rounded-lg p-2 flex flex-col justify-between">
             <div className="flex justify-between font-mono-caption text-mono-caption text-outline mb-1">
-              <span>Max: 2,400ms</span>
+              <span>Max P99: {maxObservedP99Ms}ms</span>
               <span className="text-tertiary font-medium">
-                P95: {telemetry?.currentP95Ms ?? 180}ms
+                P95: {Number(telemetry?.currentP95Ms ?? 0).toFixed(1)}ms
               </span>
             </div>
             <div className="w-full h-32">

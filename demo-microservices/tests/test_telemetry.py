@@ -299,12 +299,14 @@ async def test_telemetry_graceful_shutdown_drains_queued_measurements_before_sto
         await telemetry.stop(timeout=3.0)
 
         # Verify ALL 3 queued measurements were actually delivered before stop() returned!
-        assert len(delivered_payloads) == 3
-        assert [p["observed_value"] for p in delivered_payloads] == [11.0, 12.0, 13.0]
+        delivered_samples = [s for body in delivered_payloads for s in body.get("samples", [])]
+        assert len(delivered_samples) == 3
+        assert [s["value"] for s in delivered_samples] == [11.0, 12.0, 13.0]
 
         # Verify new measurements are rejected after stop()
         assert telemetry.record_latency(14.0) is False
-        assert len(delivered_payloads) == 3
+        delivered_samples_after = [s for body in delivered_payloads for s in body.get("samples", [])]
+        assert len(delivered_samples_after) == 3
 
         # Verify injected HTTP client was NOT closed by stop()
         assert mock_client.is_closed is False
@@ -401,8 +403,9 @@ async def test_metric_window_aggregation_error_rate_and_request_rate():
         # Empty window flush emits nothing
         assert telemetry.flush_window() is None
 
-        # Simulate 5 requests over a 2.0-second window: 3 successes, 2 failures
-        t_start = 1000.0
+        # Zero / negative elapsed window must avoid division by zero and return None when not stopping
+        import time as _time
+        t_start = _time.monotonic() - 10.0
         telemetry._window_start_monotonic = t_start
         telemetry.record_request(latency_ms=40.0, is_error=False)
         telemetry.record_request(latency_ms=45.0, is_error=False)
@@ -410,25 +413,77 @@ async def test_metric_window_aggregation_error_rate_and_request_rate():
         telemetry.record_request(latency_ms=55.0, is_error=False)
         telemetry.record_request(latency_ms=60.0, is_error=True)
 
+        assert telemetry.flush_window(now_monotonic=t_start) is None
+
         # Flush window at t_start + 2.0s -> 2/5 = 40.0% error_rate, 5/2.0 = 2.5 rps
         window_res = telemetry.flush_window(now_monotonic=t_start + 2.0)
         assert window_res == (40.0, 2.5)
 
-        # Record 1 more request to test partial final window flush during stop()
+        # Record 1 more request to test partial final window flush during stop() (8s elapsed from t_start+2.0)
         telemetry.record_request(latency_ms=70.0, is_error=False)
 
         await telemetry.stop(timeout=3.0)
 
-        latencies = [m["observed_value"] for m in emitted if m["metric_name"] == "latency"]
-        error_rates = [m["observed_value"] for m in emitted if m["metric_name"] == "error_rate"]
-        request_rates = [m["observed_value"] for m in emitted if m["metric_name"] == "request_rate"]
+        samples = [s for body in emitted for s in body.get("samples", [])]
+        latencies = [m["value"] for m in samples if m["metric_name"] == "latency"]
+        error_rates = [m["value"] for m in samples if m["metric_name"] == "error_rate"]
+        request_rates = [m["value"] for m in samples if m["metric_name"] == "request_rate"]
+        request_counts = [m["value"] for m in samples if m["metric_name"] == "request_count"]
 
         # All 6 individual request latencies preserved
         assert latencies == [40.0, 45.0, 50.0, 55.0, 60.0, 70.0]
-        # Window 1 emitted 40.0% error rate and 2.5 rps; Window 2 flushed 0.0% error rate on stop
+        # Window 1 emitted 40.0% error rate, count 5, and 2.5 rps; Window 2 flushed count 1 & 0.0% error rate on stop
         assert error_rates[0] == 40.0
         assert error_rates[1] == 0.0
+        assert request_counts == [5.0, 1.0]
         assert request_rates[0] == 2.5
         assert len(request_rates) == 2
+
+
+@pytest.mark.asyncio
+async def test_telemetry_short_window_and_health_exclusion():
+    """Verify sub-100ms shutdown micro-windows omit extrapolated RPS and /health is never counted."""
+    import json
+    from fastapi.testclient import TestClient
+    from services.order_service import main as order_main
+
+    emitted = []
+
+    async def capture_handler(request: httpx.Request) -> httpx.Response:
+        emitted.append(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(200, json={"accepted_count": 0, "anomalies_detected_count": 0, "results": []})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(capture_handler),
+        base_url="http://mock-tm/api/v1",
+    ) as mock_client:
+        telemetry = TelemetryClient(
+            service_identifier="order-service",
+            base_url="http://mock-tm/api/v1",
+            project_id=str(uuid4()),
+            aggregation_interval_seconds=60.0,
+        )
+        telemetry._http_client = mock_client
+        await telemetry.start()
+
+        # Simulate 1 request flushed after only 0.01s (< 0.1s minimum rate window)
+        t0 = 1000.0
+        telemetry._window_start_monotonic = t0
+        telemetry.record_request(latency_ms=25.0, is_error=False)
+        res_short = telemetry.flush_window(now_monotonic=t0 + 0.01, allow_while_stopping=True)
+        assert res_short == (0.0, None)
+        await telemetry.stop(timeout=2.0)
+
+        samples = [s for body in emitted for s in body.get("samples", [])]
+        assert not any(m["metric_name"] == "request_rate" for m in samples)
+        assert any(m["metric_name"] == "request_count" and m["value"] == 1.0 for m in samples)
+
+    # Verify /health and /faults are excluded by ObservabilityMiddleware
+    before_total = order_main.telemetry._window_total
+    with TestClient(order_main.app) as client:
+        assert client.get("/health").status_code == 200
+        assert client.get("/faults").status_code == 200
+        assert order_main.telemetry._window_total == before_total
+
 
 

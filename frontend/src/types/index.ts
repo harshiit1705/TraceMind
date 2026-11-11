@@ -2,6 +2,7 @@ export * from './common';
 export * from './service';
 export * from './incident';
 export * from './trace';
+export * from './log';
 export * from './ai-investigation';
 export * from './postmortem';
 export * from './settings';

@@ -1,18 +1,17 @@
 """Inventory Service (Port 8003).
 
 Responsible for warehouse catalog lookups, stock reservation, and stock locks.
-Reports latency and error telemetry to TraceMind via /anomalies/evaluate.
+Instrumented with ObservabilityMiddleware for distributed traces, structured logs, and metrics.
 """
 
 import asyncio
 import logging
 import random
-import time
 from contextlib import asynccontextmanager
-from typing import Optional
 from fastapi import FastAPI, HTTPException, status
 
 from common.config import config
+from common.middleware import ObservabilityMiddleware
 from common.models import (
     FaultConfig,
     FaultInjectionType,
@@ -22,6 +21,7 @@ from common.models import (
     InventoryStatus,
 )
 from common.telemetry import TelemetryClient
+from common.tracing import get_current_context, start_span
 from services.inventory_service.store import inventory_store
 
 logger = logging.getLogger("demo_microservices.inventory")
@@ -43,6 +43,11 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+app.add_middleware(
+    ObservabilityMiddleware,
+    service_name="inventory-service",
+    telemetry_client=telemetry,
+)
 
 
 async def _apply_fault_injection():
@@ -50,18 +55,14 @@ async def _apply_fault_injection():
     if current_fault.fault_type == FaultInjectionType.UNAVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=current_fault.error_message or "Inventory database cluster unavailable",
+            detail=current_fault.error_message or "Inventory cluster unavailable",
         )
 
-    # 1. Artificial Latency
     if current_fault.latency_delay_ms > 0:
-        delay_sec = current_fault.latency_delay_ms / 1000.0
-        await asyncio.sleep(delay_sec)
+        await asyncio.sleep(current_fault.latency_delay_ms / 1000.0)
 
-    # 2. Simulated Error Rate
     if current_fault.error_rate_pct > 0:
-        roll = random.uniform(0.0, 100.0)
-        if roll < current_fault.error_rate_pct:
+        if random.uniform(0.0, 100.0) < current_fault.error_rate_pct:
             raise HTTPException(
                 status_code=current_fault.error_status_code or 500,
                 detail=current_fault.error_message or "Warehouse lock contention error",
@@ -91,16 +92,31 @@ async def get_stock(sku: str):
 
 @app.post("/inventory/reserve", response_model=InventoryResponse, summary="Reserve inventory for an order")
 async def reserve_inventory(req: InventoryReserveRequest):
-    start_time = time.perf_counter()
-    error_occurred = False
-    error_msg = None
-
+    ctx = get_current_context()
     try:
-        await _apply_fault_injection()
-        success, reserved, err = inventory_store.reserve(req.items)
+        async with start_span(
+            telemetry,
+            operation_name="inventory_store.reserve",
+            span_kind="internal",
+            attributes={
+                "order_id": req.order_id,
+                "items_count": len(req.items),
+                "store_type": "in_memory",
+            },
+        ):
+            await _apply_fault_injection()
+            success, reserved, err = inventory_store.reserve(req.items)
+
         if not success:
-            error_occurred = True
-            error_msg = err
+            if ctx:
+                telemetry.record_log(
+                    level="WARNING",
+                    message=f"Inventory reservation rejected for order {req.order_id}: {err}",
+                    request_id=ctx.request_id,
+                    trace_id=ctx.trace_id,
+                    span_id=ctx.span_id,
+                    attributes={"order_id": req.order_id},
+                )
             return InventoryResponse(
                 order_id=req.order_id,
                 status=InventoryStatus.OUT_OF_STOCK,
@@ -113,18 +129,12 @@ async def reserve_inventory(req: InventoryReserveRequest):
             reserved_items=reserved,
         )
     except HTTPException:
-        error_occurred = True
         raise
     except Exception as exc:
-        error_occurred = True
-        error_msg = str(exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Inventory reservation failed: {str(exc)}",
         )
-    finally:
-        elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-        telemetry.record_request(latency_ms=elapsed_ms, is_error=error_occurred)
 
 
 # --- Fault Injection Control Endpoints ---
@@ -159,4 +169,3 @@ if __name__ == "__main__":
         port=config.INVENTORY_SERVICE_PORT,
         reload=False,
     )
-

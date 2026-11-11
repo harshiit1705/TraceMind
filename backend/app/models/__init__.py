@@ -17,6 +17,7 @@ from app.models.correlation import (
     CorrelationEventAssociation,
     RootCauseCandidate,
 )
+from app.models.telemetry import MetricSample, ApplicationLog, TraceSpan
 
 __all__ = [
     "Base",
@@ -41,5 +42,8 @@ __all__ = [
     "CorrelationGroup",
     "CorrelationEventAssociation",
     "RootCauseCandidate",
+    "MetricSample",
+    "ApplicationLog",
+    "TraceSpan",
 ]
 

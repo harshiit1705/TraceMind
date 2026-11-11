@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 import pytest
 import httpx
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 # Ensure backend is importable for setting up isolated TraceMind test app
@@ -128,7 +128,19 @@ def isolated_e2e_environment(monkeypatch):
     """Spins up an isolated TraceMind SQLite database and wires all 3 demo services + TraceMind."""
     tmpdir = tempfile.mkdtemp()
     db_path = os.path.join(tmpdir, "test_e2e_pipeline.db").replace("\\", "/")
-    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False, "timeout": 30.0},
+    )
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.close()
+
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
     Base.metadata.create_all(bind=engine)
@@ -217,20 +229,20 @@ async def test_complete_e2e_workflow_traffic_to_investigation(isolated_e2e_envir
     await inv_main.telemetry.start()
 
     try:
-        # 1. Warmup: 5 normal orders -> establishes statistical baselines
-        norm_summary = await runner.run_normal_traffic(count=5, interval_sec=0.05)
-        assert norm_summary.confirmed_count == 5
+        # 1. Warmup: 8 normal orders -> establishes statistical baselines cleanly across all services
+        norm_summary = await runner.run_normal_traffic(count=8, interval_sec=0.04)
+        assert norm_summary.confirmed_count == 8
         assert norm_summary.failed_count == 0
 
         # Wait briefly for telemetry queues to flush warmup baselines
         import asyncio
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.8)
 
         # 2. Fault Injection: Inventory Latency Spike (+650ms) -> Triggers real anomalies + correlation
         inv_result = await runner.run_inventory_latency_spike(
             delay_ms=650.0,
             requests=3,
-            settle_delay_sec=0.5,
+            settle_delay_sec=1.8,
             trigger_correlation=True,
             reset_prior=False,
         )

@@ -32,5 +32,12 @@ export interface ServicesOverviewStats {
   unhealthyCount: number;
   ingestionBandwidth: string;
   logPayloadDaily: string;
+  sampleIngestionRatePerSec?: number | null;
+  totalMetricSamples?: number;
+  totalLogs?: number;
+  totalSpans?: number;
+  applicationRequestRateRps?: number | null;
+  totalRequests?: number;
+  requestRateStatus?: 'available' | 'no_traffic' | 'insufficient_data';
 }
 

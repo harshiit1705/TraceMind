@@ -1,18 +1,17 @@
 """HTTP clients for Order Service downstream communication with Inventory and Payment."""
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 import httpx
 
 from common.config import config
 from common.models import (
     InventoryReserveRequest,
     InventoryResponse,
-    InventoryStatus,
     PaymentRequest,
     PaymentResponse,
-    PaymentStatus,
 )
+from common.tracing import get_propagation_headers, start_span
 
 logger = logging.getLogger("demo_microservices.order.client")
 
@@ -28,17 +27,19 @@ class DownstreamServiceError(Exception):
 
 
 class DownstreamClients:
-    """Manages HTTP clients to Inventory Service and Payment Service."""
+    """Manages HTTP clients to Inventory Service and Payment Service with trace propagation."""
 
     def __init__(
         self,
         inventory_url: Optional[str] = None,
         payment_url: Optional[str] = None,
         timeout: float = 5.0,
+        telemetry_client: Optional[Any] = None,
     ):
         self.inventory_url = (inventory_url or config.get_inventory_url()).rstrip("/")
         self.payment_url = (payment_url or config.get_payment_url()).rstrip("/")
         self.timeout = timeout
+        self.telemetry = telemetry_client
         self._inventory_client: Optional[httpx.AsyncClient] = None
         self._payment_client: Optional[httpx.AsyncClient] = None
 
@@ -59,42 +60,61 @@ class DownstreamClients:
     async def reserve_inventory(self, req: InventoryReserveRequest) -> InventoryResponse:
         client = self._inventory_client or httpx.AsyncClient(base_url=self.inventory_url, timeout=self.timeout)
         own = client != self._inventory_client
-        try:
-            resp = await client.post("/inventory/reserve", json=req.model_dump(mode="json"))
-            if resp.status_code != 200:
-                detail = resp.text
-                try:
-                    detail = resp.json().get("detail", resp.text)
-                except Exception:
-                    pass
-                raise DownstreamServiceError("inventory-service", resp.status_code, detail)
-            return InventoryResponse(**resp.json())
-        except httpx.TimeoutException:
-            raise DownstreamServiceError("inventory-service", 504, "Inventory reservation timed out")
-        except httpx.RequestError as exc:
-            raise DownstreamServiceError("inventory-service", 503, f"Inventory unreachable: {str(exc)}")
-        finally:
-            if own:
-                await client.aclose()
+        async with start_span(
+            self.telemetry,
+            operation_name="HTTP POST inventory-service /inventory/reserve",
+            span_kind="client",
+            attributes={"target.service": "inventory-service", "order_id": req.order_id},
+        ) as span:
+            headers = get_propagation_headers()
+            try:
+                resp = await client.post("/inventory/reserve", json=req.model_dump(mode="json"), headers=headers)
+                span.set_http_status(resp.status_code)
+                if resp.status_code != 200:
+                    detail = resp.text
+                    try:
+                        detail = resp.json().get("detail", resp.text)
+                    except Exception:
+                        pass
+                    raise DownstreamServiceError("inventory-service", resp.status_code, detail)
+                return InventoryResponse(**resp.json())
+            except httpx.TimeoutException:
+                span.set_http_status(504)
+                raise DownstreamServiceError("inventory-service", 504, "Inventory reservation timed out")
+            except httpx.RequestError as exc:
+                span.set_http_status(503)
+                raise DownstreamServiceError("inventory-service", 503, f"Inventory unreachable: {str(exc)}")
+            finally:
+                if own:
+                    await client.aclose()
 
     async def charge_payment(self, req: PaymentRequest) -> PaymentResponse:
         client = self._payment_client or httpx.AsyncClient(base_url=self.payment_url, timeout=self.timeout)
         own = client != self._payment_client
-        try:
-            resp = await client.post("/payments/charge", json=req.model_dump(mode="json"))
-            if resp.status_code != 200:
-                detail = resp.text
-                try:
-                    detail = resp.json().get("detail", resp.text)
-                except Exception:
-                    pass
-                raise DownstreamServiceError("payment-service", resp.status_code, detail)
-            return PaymentResponse(**resp.json())
-        except httpx.TimeoutException:
-            raise DownstreamServiceError("payment-service", 504, "Payment settlement timed out")
-        except httpx.RequestError as exc:
-            raise DownstreamServiceError("payment-service", 503, f"Payment service unreachable: {str(exc)}")
-        finally:
-            if own:
-                await client.aclose()
-
+        async with start_span(
+            self.telemetry,
+            operation_name="HTTP POST payment-service /payments/charge",
+            span_kind="client",
+            attributes={"target.service": "payment-service", "order_id": req.order_id},
+        ) as span:
+            headers = get_propagation_headers()
+            try:
+                resp = await client.post("/payments/charge", json=req.model_dump(mode="json"), headers=headers)
+                span.set_http_status(resp.status_code)
+                if resp.status_code != 200:
+                    detail = resp.text
+                    try:
+                        detail = resp.json().get("detail", resp.text)
+                    except Exception:
+                        pass
+                    raise DownstreamServiceError("payment-service", resp.status_code, detail)
+                return PaymentResponse(**resp.json())
+            except httpx.TimeoutException:
+                span.set_http_status(504)
+                raise DownstreamServiceError("payment-service", 504, "Payment settlement timed out")
+            except httpx.RequestError as exc:
+                span.set_http_status(503)
+                raise DownstreamServiceError("payment-service", 503, f"Payment service unreachable: {str(exc)}")
+            finally:
+                if own:
+                    await client.aclose()

@@ -195,7 +195,7 @@ export const ServicesPage: React.FC = () => {
               {stats?.healthyCount ?? healthyCount}
             </span>
             <span className="font-mono-caption text-mono-caption text-primary font-semibold">
-              {Math.round(((stats?.healthyCount ?? healthyCount) / (stats?.totalServices ?? 24)) * 100)}%
+              {Math.round(((stats?.healthyCount ?? healthyCount) / ((stats?.totalServices ?? services.length) || 1)) * 100)}%
             </span>
           </div>
           <span className="font-caption-ui text-caption-ui text-on-surface-variant mt-2">
@@ -216,7 +216,7 @@ export const ServicesPage: React.FC = () => {
               {stats?.degradedCount ?? degradedCount}
             </span>
             <span className="font-mono-caption text-mono-caption text-secondary font-semibold">
-              {Math.round(((stats?.degradedCount ?? degradedCount) / (stats?.totalServices ?? 24)) * 100)}%
+              {Math.round(((stats?.degradedCount ?? degradedCount) / ((stats?.totalServices ?? services.length) || 1)) * 100)}%
             </span>
           </div>
           <span className="font-caption-ui text-caption-ui text-on-surface-variant mt-2">
@@ -237,7 +237,7 @@ export const ServicesPage: React.FC = () => {
               {stats?.unhealthyCount ?? unhealthyCount}
             </span>
             <span className="font-mono-caption text-mono-caption text-error font-semibold">
-              {Math.round(((stats?.unhealthyCount ?? unhealthyCount) / (stats?.totalServices ?? 24)) * 100)}%
+              {Math.round(((stats?.unhealthyCount ?? unhealthyCount) / ((stats?.totalServices ?? services.length) || 1)) * 100)}%
             </span>
           </div>
           <span className="font-caption-ui text-caption-ui text-error font-medium mt-2">
@@ -245,21 +245,24 @@ export const ServicesPage: React.FC = () => {
           </span>
         </div>
 
-        {/* Ingestion Bandwidth */}
+        {/* Telemetry Ingestion */}
         <div className="flex flex-col p-space-md rounded-xl bg-surface-container-lowest border border-outline-variant/30 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between text-secondary mb-1">
             <span className="font-caption-ui text-caption-ui uppercase tracking-wider font-semibold">
-              Ingestion Bandwidth
+              Telemetry Ingestion
             </span>
             <span className="material-symbols-outlined text-[18px] text-tertiary">speed</span>
           </div>
           <div className="flex items-baseline gap-1">
-            <span className="font-mono-metric-lg text-mono-metric-lg text-on-surface">
-              {stats?.ingestionBandwidth ?? '4.8 GB/s'}
+            <span className="font-mono-body text-mono-body font-semibold text-on-surface">
+              {stats?.ingestionBandwidth ?? '0.0 samples/s (0 metrics)'}
             </span>
           </div>
           <span className="font-mono-caption text-mono-caption text-on-surface-variant mt-2">
-            Payload: {stats?.logPayloadDaily ?? '1.2 TB/day'}
+            {stats?.logPayloadDaily ?? '0 persisted logs'}
+            {stats?.applicationRequestRateRps != null
+              ? ` · App: ${stats.applicationRequestRateRps.toFixed(1)} req/s`
+              : ''}
           </span>
         </div>
       </div>
@@ -739,28 +742,28 @@ export const ServicesPage: React.FC = () => {
             <div className="p-space-sm rounded-lg bg-surface-container-low border border-outline-variant/20">
               <span className="font-caption-ui text-caption-ui text-secondary block">Availability SLO</span>
               <span className="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold">
-                {selectedService.availabilityPercent ?? 99.9}%
+                {selectedService.availabilityPercent !== undefined ? `${selectedService.availabilityPercent}%` : 'N/A'}
               </span>
             </div>
 
             <div className="p-space-sm rounded-lg bg-surface-container-low border border-outline-variant/20">
               <span className="font-caption-ui text-caption-ui text-secondary block">CPU Saturation</span>
               <span className="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold">
-                {selectedService.cpuSaturationPercent ?? 45}%
+                {selectedService.cpuSaturationPercent !== undefined ? `${selectedService.cpuSaturationPercent}%` : 'N/A'}
               </span>
             </div>
 
             <div className="p-space-sm rounded-lg bg-surface-container-low border border-outline-variant/20">
               <span className="font-caption-ui text-caption-ui text-secondary block">Memory Usage</span>
               <span className="font-mono-metric-lg text-mono-metric-lg text-on-surface font-semibold">
-                {selectedService.memoryUsagePercent ?? 52}%
+                {selectedService.memoryUsagePercent !== undefined ? `${selectedService.memoryUsagePercent}%` : 'N/A'}
               </span>
             </div>
 
             <div className="p-space-sm rounded-lg bg-surface-container-low border border-outline-variant/20">
               <span className="font-caption-ui text-caption-ui text-secondary block">Last Deployment</span>
               <span className="font-mono-caption text-mono-caption text-on-surface font-medium block mt-1">
-                {selectedService.lastDeployment ?? 'v2.14.0 (2h ago)'}
+                {selectedService.lastDeployment ?? 'N/A'}
               </span>
             </div>
           </div>

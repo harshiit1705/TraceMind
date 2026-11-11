@@ -318,6 +318,59 @@ class ScenarioRunner:
             "correlation_result": correlation_result,
         }
 
+    async def run_payment_latency_spike(
+        self,
+        delay_ms: float = 800.0,
+        requests: int = 5,
+        warmup_count: int = 0,
+        settle_delay_sec: float = 0.5,
+        trigger_correlation: bool = True,
+        reset_prior: bool = True,
+    ) -> Dict[str, Any]:
+        """Scenario 4: Inject latency spike in Payment Service causing downstream Order degradation/timeouts."""
+        if reset_prior:
+            await self.reset_all_faults()
+        if warmup_count > 0:
+            await self.run_normal_traffic(count=warmup_count, interval_sec=0.1)
+
+        logger.info(
+            "Starting Payment Latency Spike (+%.1fms delay for %d requests)...",
+            delay_ms,
+            requests,
+        )
+        fault = FaultConfig(
+            fault_type=FaultInjectionType.LATENCY,
+            latency_delay_ms=delay_ms,
+            error_message="Simulated downstream payment gateway latency degradation",
+        )
+        await self._post_service(
+            self._payment_client,
+            self.payment_url,
+            "/faults",
+            fault.model_dump(mode="json"),
+        )
+
+        summary = await self.traffic.run_batch(count=requests, interval_sec=0.1)
+
+        correlation_result = None
+        if trigger_correlation:
+            if settle_delay_sec > 0:
+                await asyncio.sleep(settle_delay_sec)
+            correlation_result = await self.trigger_correlation_evaluation(window_seconds=300)
+
+        return {
+            "scenario": "payment-latency",
+            "fault_injected": fault.model_dump(mode="json"),
+            "traffic_summary": {
+                "total_requests": summary.total_requests,
+                "confirmed": summary.confirmed_count,
+                "failed": summary.failed_count,
+                "avg_latency_ms": summary.avg_latency_ms,
+                "max_latency_ms": summary.max_latency_ms,
+            },
+            "correlation_result": correlation_result,
+        }
+
     async def run_recovery(
         self,
         count: int = 5,
