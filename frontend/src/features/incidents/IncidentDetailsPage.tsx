@@ -10,6 +10,7 @@ import {
   GroundedInvestigationResponse,
   CorrelationGroup,
   ApplicationLogItem,
+  RemediationDetail,
 } from '../../types';
 
 export const IncidentDetailsPage: React.FC = () => {
@@ -26,12 +27,38 @@ export const IncidentDetailsPage: React.FC = () => {
   const [transitioning, setTransitioning] = useState<boolean>(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
 
+  // Phase 4 Remediation Workflow State
+  const [remediations, setRemediations] = useState<RemediationDetail[]>([]);
+  const [loadingRemediations, setLoadingRemediations] = useState<boolean>(false);
+  const [activeRemediationAction, setActiveRemediationAction] = useState<{
+    id: string;
+    type: 'approve' | 'reject' | 'execute';
+  } | null>(null);
+  const [actionInput, setActionInput] = useState<{
+    operatorName: string;
+    notesOrReason: string;
+  }>({ operatorName: 'Alex Chen (Staff SRE)', notesOrReason: '' });
+  const [remediationError, setRemediationError] = useState<string | null>(null);
+  const [actionInProgress, setActionInProgress] = useState<boolean>(false);
+
   const loadTimeline = useCallback(async (id: string) => {
     try {
       const res = await apiClient.getIncidentTimeline(id);
       setTimelineEvents(res.data);
     } catch {
       // Non-blocking fallback
+    }
+  }, []);
+
+  const loadRemediations = useCallback(async (incId: string) => {
+    setLoadingRemediations(true);
+    try {
+      const res = await apiClient.getRemediations(incId);
+      setRemediations(res.data || []);
+    } catch {
+      // Non-blocking fallback
+    } finally {
+      setLoadingRemediations(false);
     }
   }, []);
 
@@ -66,6 +93,7 @@ export const IncidentDetailsPage: React.FC = () => {
         setLoading(false);
         if (res.data) {
           loadTimeline(res.data.id);
+          loadRemediations(res.data.id);
           const corrId = res.data.correlationGroupId || res.data.correlation_group_id;
           if (corrId) {
             loadInvestigation(corrId, res.data.id);
@@ -81,7 +109,93 @@ export const IncidentDetailsPage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [incidentId, loadTimeline, loadInvestigation]);
+  }, [incidentId, loadTimeline, loadInvestigation, loadRemediations]);
+
+  const handleApproveRemediation = async (remId: string) => {
+    setActionInProgress(true);
+    setRemediationError(null);
+    try {
+      const res = await apiClient.approveRemediation(remId, {
+        approver_name: actionInput.operatorName || 'Alex Chen (Staff SRE)',
+        approval_notes: actionInput.notesOrReason || 'Verified safe for production execution.',
+      });
+      setRemediations((prev) => prev.map((r) => (r.id === remId ? res.data : r)));
+      setActiveRemediationAction(null);
+      if (incident) {
+        await loadTimeline(incident.id);
+      }
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      setRemediationError(e.message || 'Failed to approve remediation.');
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
+  const handleRejectRemediation = async (remId: string) => {
+    if (!actionInput.notesOrReason.trim()) {
+      setRemediationError('A rejection reason is mandatory when rejecting a remediation.');
+      return;
+    }
+    setActionInProgress(true);
+    setRemediationError(null);
+    try {
+      const res = await apiClient.rejectRemediation(remId, {
+        rejector_name: actionInput.operatorName || 'Alex Chen (Staff SRE)',
+        rejection_reason: actionInput.notesOrReason,
+      });
+      setRemediations((prev) => prev.map((r) => (r.id === remId ? res.data : r)));
+      setActiveRemediationAction(null);
+      if (incident) {
+        await loadTimeline(incident.id);
+      }
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      setRemediationError(e.message || 'Failed to reject remediation.');
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
+  const handleExecuteRemediation = async (remId: string) => {
+    setActionInProgress(true);
+    setRemediationError(null);
+    try {
+      const res = await apiClient.executeRemediation(remId, {
+        executor_name: actionInput.operatorName || 'Alex Chen (Staff SRE)',
+      });
+      setRemediations((prev) => prev.map((r) => (r.id === remId ? res.data : r)));
+      setActiveRemediationAction(null);
+      if (incident) {
+        await loadTimeline(incident.id);
+      }
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      setRemediationError(e.message || 'Failed to execute remediation.');
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
+  const handleCancelRemediation = async (remId: string) => {
+    setActionInProgress(true);
+    setRemediationError(null);
+    try {
+      const res = await apiClient.cancelRemediation(remId, {
+        cancelled_by: actionInput.operatorName || 'Alex Chen (Staff SRE)',
+        cancellation_reason: 'Cancelled by operator.',
+      });
+      setRemediations((prev) => prev.map((r) => (r.id === remId ? res.data : r)));
+      if (incident) {
+        await loadTimeline(incident.id);
+      }
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      setRemediationError(e.message || 'Failed to cancel remediation.');
+    } finally {
+      setActionInProgress(false);
+    }
+  };
 
   const handleStatusTransition = async (targetStatus: IncidentStatus) => {
     if (!incident) return;
@@ -620,6 +734,503 @@ export const IncidentDetailsPage: React.FC = () => {
                   Open AI Investigation Center
                 </Button>
               </Link>
+            </div>
+          )}
+        </div>
+
+        {/* Phase 4: Remediation & Human Recovery Workflow */}
+        <div className="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm border border-outline-variant/30 flex flex-col gap-space-md">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-[22px]">build_circle</span>
+              <div className="flex flex-col">
+                <span className="font-title-md text-title-md text-on-surface font-semibold">
+                  Remediation &amp; Human Recovery Workflow
+                </span>
+                <span className="font-caption-ui text-caption-ui text-outline">
+                  Strict allowlisted remediation actions • Autonomous AI execution prohibited
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 rounded bg-error-container text-on-error-container font-mono-badge text-mono-badge font-semibold tracking-wide uppercase">
+                HUMAN APPROVAL REQUIRED
+              </span>
+              <span className="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-surface-container text-on-surface-variant">
+                {remediations.length} Action{remediations.length === 1 ? '' : 's'}
+              </span>
+            </div>
+          </div>
+
+          {remediationError && (
+            <div className="p-3 rounded-lg bg-error-container/80 text-on-error-container flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px]">error</span>
+                <span>{remediationError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRemediationError(null)}
+                className="text-on-error-container hover:opacity-70 font-semibold"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {loadingRemediations ? (
+            <div className="py-space-md flex justify-center">
+              <LoadingSpinner message="Loading incident remediations..." />
+            </div>
+          ) : remediations.length === 0 ? (
+            <div className="p-space-md rounded-lg bg-surface-container-low/50 border border-outline-variant/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-space-sm">
+              <div className="flex flex-col gap-1">
+                <span className="font-body-medium text-body-medium font-semibold text-on-surface">
+                  No remediation proposed yet
+                </span>
+                <span className="font-caption-ui text-caption-ui text-on-surface-variant">
+                  You can propose an allowlisted remediation action (such as fault reset or pod restart) to resolve this incident.
+                </span>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="add_task"
+                onClick={async () => {
+                  setActionInProgress(true);
+                  try {
+                    const res = await apiClient.proposeRemediation(incident.id, {
+                      title: 'Reset Payment Service Faults and Connection Locks',
+                      target_service: 'payment-service',
+                      description: 'Reset faults and clear deadlocks on payment-service to restore throughput.',
+                      action_name: 'RESET_SERVICE_FAULTS',
+                      risk_level: 'LOW',
+                      preconditions: ['Payment error rate > 5% or latency > 1000ms'],
+                      rollback_procedure: 'Re-route traffic or restart container if lock persists',
+                      expected_result: 'Payment service error rate drops to 0% and latency normalizes',
+                      verification_steps: ['Check GET /health on payment-service'],
+                      proposer_name: 'Alex Chen (Staff SRE)',
+                    });
+                    setRemediations((prev) => [...prev, res.data]);
+                    await loadTimeline(incident.id);
+                  } catch (err: unknown) {
+                    const e = err as { message?: string };
+                    setRemediationError(e.message || 'Failed to propose remediation');
+                  } finally {
+                    setActionInProgress(false);
+                  }
+                }}
+                disabled={actionInProgress}
+              >
+                Propose Fault Reset Action
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-space-md">
+              {remediations.map((rem) => {
+                const isActionActive = activeRemediationAction?.id === rem.id;
+                const actionType = activeRemediationAction?.type;
+
+                const statusBadge = () => {
+                  switch (rem.status) {
+                    case 'PROPOSED':
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded font-mono-badge text-mono-badge font-semibold bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
+                          <span className="material-symbols-outlined text-[14px]">pending</span>
+                          PROPOSED — AWAITING SRE APPROVAL
+                        </span>
+                      );
+                    case 'APPROVED':
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded font-mono-badge text-mono-badge font-semibold bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200 border border-sky-300 dark:border-sky-800">
+                          <span className="material-symbols-outlined text-[14px]">verified</span>
+                          APPROVED — READY FOR EXECUTION
+                        </span>
+                      );
+                    case 'EXECUTING':
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded font-mono-badge text-mono-badge font-semibold bg-purple-100 text-purple-900 dark:bg-purple-950 dark:text-purple-200 animate-pulse">
+                          <span className="material-symbols-outlined text-[14px] animate-spin">autorenew</span>
+                          EXECUTING ALLOWLISTED ACTION
+                        </span>
+                      );
+                    case 'EXECUTED':
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded font-mono-badge text-mono-badge font-semibold bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800">
+                          <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                          EXECUTED &amp; CONFIRMED
+                        </span>
+                      );
+                    case 'REJECTED':
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded font-mono-badge text-mono-badge font-semibold bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200 border border-rose-300 dark:border-rose-800">
+                          <span className="material-symbols-outlined text-[14px]">cancel</span>
+                          REJECTED BY OPERATOR
+                        </span>
+                      );
+                    case 'CANCELLED':
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded font-mono-badge text-mono-badge font-semibold bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                          <span className="material-symbols-outlined text-[14px]">block</span>
+                          CANCELLED
+                        </span>
+                      );
+                    default:
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded font-mono-badge text-mono-badge font-semibold bg-error-container text-on-error-container">
+                          <span className="material-symbols-outlined text-[14px]">error</span>
+                          {rem.status}
+                        </span>
+                      );
+                  }
+                };
+
+                return (
+                  <div
+                    key={rem.id}
+                    className="p-space-md rounded-lg bg-surface-container-low border border-outline-variant/30 flex flex-col gap-3 transition-all"
+                  >
+                    {/* Header: Title + Status + Action Name */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-title-sm text-title-sm font-semibold text-on-surface">
+                          {rem.title}
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-surface-container-high text-primary font-mono-badge text-[11px] font-semibold">
+                          {rem.action_name}
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-surface-container text-secondary font-mono-badge text-[11px]">
+                          Target: {rem.target_service}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-0.5 rounded font-mono-badge text-[10px] font-semibold uppercase ${
+                            rem.risk_level === 'HIGH'
+                              ? 'bg-error-container text-on-error-container'
+                              : rem.risk_level === 'MEDIUM'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
+                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                          }`}
+                        >
+                          {rem.risk_level} RISK
+                        </span>
+                        {statusBadge()}
+                      </div>
+                    </div>
+
+                    {/* Description */}
+                    <p className="text-on-surface font-body-default text-body-default leading-relaxed">
+                      {rem.description}
+                    </p>
+
+                    {/* Preconditions, Expected Results, Verification */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs pt-1">
+                      {rem.preconditions && rem.preconditions.length > 0 && (
+                        <div className="p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/20 flex flex-col gap-1">
+                          <span className="font-mono-badge text-[10px] uppercase font-semibold text-outline">
+                            Preconditions:
+                          </span>
+                          {rem.preconditions.map((p, idx) => (
+                            <div key={idx} className="flex items-center gap-1.5 text-on-surface-variant">
+                              <span className="material-symbols-outlined text-[13px] text-primary">check</span>
+                              <span>{p}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {rem.expected_result && (
+                        <div className="p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/20 flex flex-col gap-1">
+                          <span className="font-mono-badge text-[10px] uppercase font-semibold text-outline">
+                            Expected Outcome:
+                          </span>
+                          <span className="text-on-surface-variant">{rem.expected_result}</span>
+                        </div>
+                      )}
+
+                      {rem.verification_steps && rem.verification_steps.length > 0 && (
+                        <div className="p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/20 flex flex-col gap-1">
+                          <span className="font-mono-badge text-[10px] uppercase font-semibold text-outline">
+                            Verification Steps:
+                          </span>
+                          <span className="text-on-surface-variant">
+                            {rem.verification_steps.join(' • ')}
+                          </span>
+                        </div>
+                      )}
+
+                      {rem.rollback_procedure && (
+                        <div className="p-2 rounded bg-surface-container-lowest/60 border border-outline-variant/20 flex flex-col gap-1">
+                          <span className="font-mono-badge text-[10px] uppercase font-semibold text-outline">
+                            Rollback Procedure:
+                          </span>
+                          <span className="text-on-surface-variant">{rem.rollback_procedure}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Approval Audit Banner */}
+                    {rem.approved_by && (
+                      <div className="p-2.5 rounded bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-xs flex flex-col gap-1">
+                        <div className="flex items-center justify-between text-sky-900 dark:text-sky-200 font-semibold font-mono-caption">
+                          <span className="flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[15px]">verified_user</span>
+                            Approved by: {rem.approved_by}
+                          </span>
+                          <span>{rem.approved_at ? new Date(rem.approved_at).toLocaleString() : ''}</span>
+                        </div>
+                        {rem.approval_notes && (
+                          <span className="text-sky-800 dark:text-sky-300">
+                            Notes: {rem.approval_notes}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Rejection Audit Banner */}
+                    {rem.rejected_by && (
+                      <div className="p-2.5 rounded bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs flex flex-col gap-1">
+                        <div className="flex items-center justify-between text-rose-900 dark:text-rose-200 font-semibold font-mono-caption">
+                          <span className="flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[15px]">cancel</span>
+                            Rejected by: {rem.rejected_by}
+                          </span>
+                          <span>{rem.rejected_at ? new Date(rem.rejected_at).toLocaleString() : ''}</span>
+                        </div>
+                        <span className="text-rose-800 dark:text-rose-300">
+                          Reason: {rem.rejection_reason}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Execution Audit & Results Banner */}
+                    {rem.executed_by && (
+                      <div className="p-2.5 rounded bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between text-emerald-900 dark:text-emerald-200 font-semibold font-mono-caption flex-wrap gap-2">
+                          <span className="flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[15px]">done_all</span>
+                            Executed by: {rem.executed_by}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-200 dark:bg-emerald-800 text-emerald-950 dark:text-emerald-100 font-mono text-[10px] font-bold">
+                              MODE: {rem.execution_mode || 'REAL'}
+                            </span>
+                            <span>{rem.executed_at ? new Date(rem.executed_at).toLocaleString() : ''}</span>
+                          </div>
+                        </div>
+                        {rem.execution_result_json && (
+                          <div className="p-2 rounded bg-surface-container-lowest font-mono text-[11px] text-on-surface-variant overflow-x-auto">
+                            <span>Status: {rem.execution_result_json.status || 'OK'}</span>
+                            {' • '}
+                            <span>Target: {rem.execution_result_json.target_service}</span>
+                            {' • '}
+                            <span>Verified: {rem.execution_result_json.verified ? 'YES' : 'NO'}</span>
+                            {rem.execution_result_json.response_data && (
+                              <div className="mt-1 text-[10px] text-outline">
+                                Response: {JSON.stringify(rem.execution_result_json.response_data)}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {rem.execution_error && (
+                          <div className="text-error font-mono text-[11px]">
+                            Execution Error: {rem.execution_error}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Inline Form Drawer for Approval / Rejection / Execution */}
+                    {isActionActive && (
+                      <div className="p-3 rounded-lg bg-surface-container-high/80 border border-primary/30 flex flex-col gap-2.5 animate-fadeIn">
+                        <div className="flex items-center justify-between">
+                          <span className="font-title-sm text-title-sm font-semibold text-primary">
+                            {actionType === 'approve'
+                              ? 'Human SRE Approval Confirmation'
+                              : actionType === 'reject'
+                              ? 'Human SRE Rejection'
+                              : 'Execute Allowlisted Remediation Action'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveRemediationAction(null)}
+                            className="text-on-surface-variant hover:text-on-surface text-xs"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[11px] font-mono-badge uppercase text-outline">
+                              Operator Name / Identity:
+                            </label>
+                            <input
+                              type="text"
+                              value={actionInput.operatorName}
+                              onChange={(e) =>
+                                setActionInput((prev) => ({ ...prev, operatorName: e.target.value }))
+                              }
+                              className="px-2.5 py-1.5 rounded bg-surface-container text-xs text-on-surface border border-outline-variant/40 focus:outline-none focus:border-primary"
+                              placeholder="e.g. Alex Chen (Staff SRE)"
+                            />
+                          </div>
+
+                          {actionType !== 'execute' && (
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[11px] font-mono-badge uppercase text-outline">
+                                {actionType === 'approve' ? 'Approval Notes (Optional):' : 'Rejection Reason (Required):'}
+                              </label>
+                              <textarea
+                                value={actionInput.notesOrReason}
+                                onChange={(e) =>
+                                  setActionInput((prev) => ({ ...prev, notesOrReason: e.target.value }))
+                                }
+                                rows={2}
+                                className="px-2.5 py-1.5 rounded bg-surface-container text-xs text-on-surface border border-outline-variant/40 focus:outline-none focus:border-primary"
+                                placeholder={
+                                  actionType === 'approve'
+                                    ? 'e.g. Verified lock contention in traces; safe to reset faults.'
+                                    : 'e.g. Action would exhaust database pool during peak traffic.'
+                                }
+                              />
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-end gap-2 pt-1">
+                            <Button
+                              variant="surface"
+                              size="sm"
+                              onClick={() => setActiveRemediationAction(null)}
+                              disabled={actionInProgress}
+                            >
+                              Cancel
+                            </Button>
+                            {actionType === 'approve' && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                icon="verified"
+                                onClick={() => handleApproveRemediation(rem.id)}
+                                disabled={actionInProgress}
+                              >
+                                {actionInProgress ? 'Approving...' : 'Confirm Approval'}
+                              </Button>
+                            )}
+                            {actionType === 'reject' && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                icon="cancel"
+                                onClick={() => handleRejectRemediation(rem.id)}
+                                disabled={actionInProgress}
+                              >
+                                {actionInProgress ? 'Rejecting...' : 'Confirm Rejection'}
+                              </Button>
+                            )}
+                            {actionType === 'execute' && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                icon="play_arrow"
+                                onClick={() => handleExecuteRemediation(rem.id)}
+                                disabled={actionInProgress}
+                              >
+                                {actionInProgress ? 'Executing...' : 'Run Action Now'}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Bottom Action Bar */}
+                    {!isActionActive && (
+                      <div className="flex items-center justify-between pt-2 border-t border-outline-variant/20 flex-wrap gap-2">
+                        <div className="flex items-center gap-1.5 text-secondary text-xs">
+                          <span className="material-symbols-outlined text-[16px] text-primary">lock</span>
+                          <span className="font-mono-badge text-[11px]">
+                            {rem.status === 'PROPOSED'
+                              ? 'Autonomous execution prohibited • SRE authorization required'
+                              : rem.status === 'APPROVED'
+                              ? 'Human approved • Ready to execute safely'
+                              : rem.status === 'EXECUTED'
+                              ? 'Remediation completed successfully'
+                              : 'Workflow finished'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {rem.status === 'PROPOSED' && (
+                            <>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                icon="cancel"
+                                onClick={() => {
+                                  setActionInput({
+                                    operatorName: incident.commander?.name || 'Alex Chen (Staff SRE)',
+                                    notesOrReason: '',
+                                  });
+                                  setActiveRemediationAction({ id: rem.id, type: 'reject' });
+                                }}
+                                disabled={actionInProgress}
+                              >
+                                Reject
+                              </Button>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                icon="verified"
+                                onClick={() => {
+                                  setActionInput({
+                                    operatorName: incident.commander?.name || 'Alex Chen (Staff SRE)',
+                                    notesOrReason: 'Production lock contention verified. Approved for execution.',
+                                  });
+                                  setActiveRemediationAction({ id: rem.id, type: 'approve' });
+                                }}
+                                disabled={actionInProgress}
+                              >
+                                Approve Action
+                              </Button>
+                            </>
+                          )}
+
+                          {rem.status === 'APPROVED' && (
+                            <>
+                              <Button
+                                variant="surface"
+                                size="sm"
+                                icon="block"
+                                onClick={() => handleCancelRemediation(rem.id)}
+                                disabled={actionInProgress}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                icon="play_arrow"
+                                onClick={() => {
+                                  setActionInput({
+                                    operatorName: incident.commander?.name || 'Alex Chen (Staff SRE)',
+                                    notesOrReason: '',
+                                  });
+                                  setActiveRemediationAction({ id: rem.id, type: 'execute' });
+                                }}
+                                disabled={actionInProgress}
+                              >
+                                Execute Remediation
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

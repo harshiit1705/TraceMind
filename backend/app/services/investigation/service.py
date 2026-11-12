@@ -8,7 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.correlation import CorrelationGroup
+from app.models.incident import Incident
+from app.models.incident_event import IncidentEvent
 from app.models.investigation import Investigation
+from app.models.recommendation import Recommendation
 from app.schemas.investigation import GroundedInvestigationResponse
 from app.services.investigation.evidence_builder import EvidenceBuilder
 from app.services.investigation.gemini_provider import GeminiInvestigationProvider
@@ -184,6 +187,61 @@ class InvestigationService:
             investigation.latency_ms = provider_result.latency_ms
             investigation.completed_at = datetime.now(timezone.utc)
             investigation.error_message = None
+
+            # Persist first-class recommendations for Phase 4 human approval workflow
+            linked_incident = (
+                self.db.query(Incident)
+                .filter(Incident.correlation_group_id == correlation_group_id)
+                .first()
+            )
+            for ai_rec in provider_result.result.remediation_recommendations:
+                # Map action type to standard allowlisted action
+                action_name = "RESET_SERVICE_FAULTS"
+                act_str = ai_rec.action_type.value.lower()
+                if "restart" in act_str:
+                    action_name = "RESTART_SERVICE"
+                elif "scale" in act_str:
+                    action_name = "SCALE_REPLICAS"
+                elif "rollback" in act_str:
+                    action_name = "ROLLBACK_DEPLOYMENT"
+                elif "failover" in act_str:
+                    action_name = "DRAIN_TRAFFIC"
+
+                rec_row = Recommendation(
+                    investigation_id=investigation.id,
+                    title=ai_rec.title,
+                    action_type=ai_rec.action_type.value,
+                    action_name=action_name,
+                    target_service=ai_rec.target_service,
+                    description=ai_rec.description,
+                    command_snippet=ai_rec.command_snippet,
+                    risk_level=ai_rec.risk_level.value,
+                    is_dry_run_safe=True,
+                    requires_human_approval=True,
+                    status="PROPOSED",
+                    preconditions=ai_rec.preconditions,
+                    rollback_procedure=ai_rec.rollback_procedure,
+                    expected_result=ai_rec.expected_result,
+                    verification_steps=ai_rec.verification_steps,
+                    is_demo=False,
+                )
+                self.db.add(rec_row)
+
+                if linked_incident:
+                    event = IncidentEvent(
+                        incident_id=linked_incident.id,
+                        timestamp=datetime.now(timezone.utc),
+                        title=f"Remediation Proposed by AI Investigator: {ai_rec.title}",
+                        event_type="agent",
+                        source="TraceMind AI Investigator",
+                        description=f"AI proposed action '{action_name}' for '{ai_rec.target_service}'. Requires human approval.",
+                        payload={
+                            "action_name": action_name,
+                            "target_service": ai_rec.target_service,
+                            "risk_level": ai_rec.risk_level.value,
+                        },
+                    )
+                    self.db.add(event)
 
             self.db.commit()
             self.db.refresh(investigation)

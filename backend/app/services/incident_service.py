@@ -247,14 +247,21 @@ class IncidentService:
         rec = Recommendation(
             investigation_id=inv.id,
             finding_id=finding.id,
-            title="Execute Runbook RB-402: Terminate Idle Transactions",
+            title="Reset Payment Service Faults and Connection Locks",
             action_type="immediate",
-            description="Immediately relieves lock contention by terminating idle transactions older than 5 minutes.",
-            command_snippet="SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle in transaction' AND query_start < NOW() - INTERVAL '5 min';",
+            action_name="RESET_SERVICE_FAULTS",
+            target_service="payment-service",
+            description="Immediately relieves lock contention by resetting payment service faults and clearing stuck locks.",
+            command_snippet="POST /faults/reset",
             risk_level="LOW",
+            status="PROPOSED",
             is_dry_run_safe=True,
             requires_human_approval=True,
-            is_demo=True
+            preconditions=["Verify payment-service latency > 1000ms or lock errors"],
+            rollback_procedure="Re-apply previous traffic routing or scale replicas if error rate persists",
+            expected_result="Payment service error rate drops to 0% and latency normalizes below 50ms",
+            verification_steps=["Inspect payment-service /health response", "Verify /faults endpoint returns healthy status"],
+            is_demo=True,
         )
         self.db.add(rec)
         self.db.commit()

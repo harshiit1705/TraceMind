@@ -1117,9 +1117,11 @@ export const AiInvestigationPage: React.FC = () => {
                       variant="primary" 
                       size="sm" 
                       icon="verified_user"
-                      onClick={() => alert(`Remediation action '${rec.title}' acknowledged for manual execution by SRE.`)}
+                      onClick={() => {
+                        navigate('/incidents/' + (investigation?.incident_id || 'INC-8492'));
+                      }}
                     >
-                      Authorize Action
+                      Authorize in Incident Command
                     </Button>
                   </div>
                 </div>

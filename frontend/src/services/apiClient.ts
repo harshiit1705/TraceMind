@@ -21,6 +21,12 @@ import {
   MultiSignalEvidenceSummary,
   RootCauseCandidate,
   ProjectItem,
+  RemediationDetail,
+  RemediationApproveRequest,
+  RemediationRejectRequest,
+  RemediationExecuteRequest,
+  RemediationCancelRequest,
+  RemediationProposeRequest,
 } from '../types';
 import { 
   MOCK_SERVICES, 
@@ -717,6 +723,228 @@ class ApiClient {
         total_count: 0,
         is_demo_scenario: true,
         items: [],
+      }
+    );
+  }
+
+  // --- Phase 4 Human-Approved Remediation Workflow APIs ---
+
+  public async getRemediations(incidentId: string, projectId?: string): Promise<ApiResponse<RemediationDetail[]>> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    const mockRem: RemediationDetail = {
+      id: 'rem-8492-seed-01',
+      title: 'Reset Payment Service Faults and Connection Locks',
+      action_type: 'immediate',
+      target_service: 'payment-service',
+      description: 'Immediately relieves lock contention by resetting payment service faults and clearing stuck locks.',
+      action_name: 'RESET_SERVICE_FAULTS',
+      action_parameters: {},
+      risk_level: 'LOW',
+      status: 'PROPOSED',
+      preconditions: ['Verify payment-service latency > 1000ms or lock errors'],
+      rollback_procedure: 'Re-apply previous traffic routing or scale replicas if error rate persists',
+      expected_result: 'Payment service error rate drops to 0% and latency normalizes below 50ms',
+      verification_steps: [
+        'Inspect payment-service /health response',
+        'Verify /faults endpoint returns healthy status',
+      ],
+      requires_human_approval: true,
+      is_demo: true,
+      created_at: new Date().toISOString(),
+    };
+    return this.request<RemediationDetail[]>(
+      `/api/v1/incidents/${encodeURIComponent(incidentId)}/remediations${qs}`,
+      [mockRem]
+    );
+  }
+
+  public async getRemediationById(remediationId: string, projectId?: string): Promise<ApiResponse<RemediationDetail>> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    const mockRem: RemediationDetail = {
+      id: remediationId,
+      title: 'Reset Payment Service Faults and Connection Locks',
+      action_type: 'immediate',
+      target_service: 'payment-service',
+      description: 'Immediately relieves lock contention by resetting payment service faults and clearing stuck locks.',
+      action_name: 'RESET_SERVICE_FAULTS',
+      action_parameters: {},
+      risk_level: 'LOW',
+      status: 'PROPOSED',
+      preconditions: ['Verify payment-service latency > 1000ms or lock errors'],
+      rollback_procedure: 'Re-apply previous traffic routing or scale replicas if error rate persists',
+      expected_result: 'Payment service error rate drops to 0% and latency normalizes below 50ms',
+      verification_steps: ['Inspect payment-service /health response'],
+      requires_human_approval: true,
+      is_demo: true,
+    };
+    return this.request<RemediationDetail>(`/api/v1/remediations/${encodeURIComponent(remediationId)}${qs}`, mockRem);
+  }
+
+  public async proposeRemediation(
+    incidentId: string,
+    payload: RemediationProposeRequest,
+    projectId?: string
+  ): Promise<ApiResponse<RemediationDetail>> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    const mockRem: RemediationDetail = {
+      id: `rem-mock-${Date.now()}`,
+      title: payload.title,
+      target_service: payload.target_service,
+      description: payload.description,
+      action_name: payload.action_name,
+      action_parameters: payload.action_parameters || {},
+      risk_level: payload.risk_level || 'LOW',
+      status: 'PROPOSED',
+      preconditions: payload.preconditions || [],
+      rollback_procedure: payload.rollback_procedure,
+      expected_result: payload.expected_result,
+      verification_steps: payload.verification_steps || [],
+      requires_human_approval: true,
+      is_demo: true,
+      created_at: new Date().toISOString(),
+    };
+    return this.request<RemediationDetail>(
+      `/api/v1/incidents/${encodeURIComponent(incidentId)}/remediations${qs}`,
+      mockRem,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
+  }
+
+  public async approveRemediation(
+    remediationId: string,
+    payload: RemediationApproveRequest,
+    projectId?: string
+  ): Promise<ApiResponse<RemediationDetail>> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    const mockRem: RemediationDetail = {
+      id: remediationId,
+      title: 'Reset Payment Service Faults and Connection Locks',
+      target_service: 'payment-service',
+      description: 'Fault reset approved by human operator.',
+      action_name: 'RESET_SERVICE_FAULTS',
+      risk_level: 'LOW',
+      status: 'APPROVED',
+      preconditions: [],
+      verification_steps: [],
+      requires_human_approval: true,
+      approved_by: payload.approver_name,
+      approved_at: new Date().toISOString(),
+      approval_notes: payload.approval_notes,
+      is_demo: true,
+    };
+    return this.request<RemediationDetail>(
+      `/api/v1/remediations/${encodeURIComponent(remediationId)}/approve${qs}`,
+      mockRem,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
+  }
+
+  public async rejectRemediation(
+    remediationId: string,
+    payload: RemediationRejectRequest,
+    projectId?: string
+  ): Promise<ApiResponse<RemediationDetail>> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    const mockRem: RemediationDetail = {
+      id: remediationId,
+      title: 'Reset Payment Service Faults and Connection Locks',
+      target_service: 'payment-service',
+      description: 'Remediation rejected by human operator.',
+      action_name: 'RESET_SERVICE_FAULTS',
+      risk_level: 'LOW',
+      status: 'REJECTED',
+      preconditions: [],
+      verification_steps: [],
+      requires_human_approval: true,
+      rejected_by: payload.rejector_name,
+      rejected_at: new Date().toISOString(),
+      rejection_reason: payload.rejection_reason,
+      is_demo: true,
+    };
+    return this.request<RemediationDetail>(
+      `/api/v1/remediations/${encodeURIComponent(remediationId)}/reject${qs}`,
+      mockRem,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
+  }
+
+  public async executeRemediation(
+    remediationId: string,
+    payload: RemediationExecuteRequest,
+    projectId?: string
+  ): Promise<ApiResponse<RemediationDetail>> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    const mockRem: RemediationDetail = {
+      id: remediationId,
+      title: 'Reset Payment Service Faults and Connection Locks',
+      target_service: 'payment-service',
+      description: 'Remediation executed via allowlisted adapter.',
+      action_name: 'RESET_SERVICE_FAULTS',
+      risk_level: 'LOW',
+      status: 'EXECUTED',
+      preconditions: [],
+      verification_steps: [],
+      requires_human_approval: true,
+      executed_by: payload.executor_name,
+      executed_at: new Date().toISOString(),
+      execution_mode: 'REAL',
+      execution_result_json: {
+        verified: true,
+        action: 'RESET_SERVICE_FAULTS',
+        target_service: 'payment-service',
+        mode: 'REAL',
+      },
+      is_demo: true,
+    };
+    return this.request<RemediationDetail>(
+      `/api/v1/remediations/${encodeURIComponent(remediationId)}/execute${qs}`,
+      mockRem,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
+  }
+
+  public async cancelRemediation(
+    remediationId: string,
+    payload: RemediationCancelRequest,
+    projectId?: string
+  ): Promise<ApiResponse<RemediationDetail>> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    const mockRem: RemediationDetail = {
+      id: remediationId,
+      title: 'Reset Payment Service Faults and Connection Locks',
+      target_service: 'payment-service',
+      description: 'Remediation cancelled.',
+      action_name: 'RESET_SERVICE_FAULTS',
+      risk_level: 'LOW',
+      status: 'CANCELLED',
+      preconditions: [],
+      verification_steps: [],
+      requires_human_approval: true,
+      is_demo: true,
+    };
+    return this.request<RemediationDetail>(
+      `/api/v1/remediations/${encodeURIComponent(remediationId)}/cancel${qs}`,
+      mockRem,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       }
     );
   }

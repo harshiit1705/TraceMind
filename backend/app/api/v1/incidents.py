@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -14,6 +14,7 @@ from app.schemas.incident import (
     TimelineResponse,
 )
 from app.schemas.investigation import GroundedInvestigationResponse
+from app.schemas.recommendation import RemediationDetailResponse, RemediationProposeRequest
 from app.schemas.telemetry import ApplicationLogResponse
 from app.services.incident_service import (
     CorrelationGroupAlreadyLinkedError,
@@ -297,4 +298,46 @@ def get_incident_logs(
         page_size=limit,
         total_pages=total_pages,
     )
+
+
+@router.get(
+    "/{incident_id}/remediations",
+    response_model=List[RemediationDetailResponse],
+    summary="List all proposed, approved, or executed remediations for an incident",
+)
+def list_incident_remediations(
+    incident_id: str,
+    project_id: Optional[UUID] = Query(None, description="Optional project UUID for tenant isolation"),
+    db: Session = Depends(get_db),
+) -> List[RemediationDetailResponse]:
+    from app.services.remediation.service import RemediationService
+    service = RemediationService(db)
+    try:
+        return service.list_remediations_for_incident(incident_id, project_id=project_id)
+    except IncidentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ProjectIsolationError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+
+
+@router.post(
+    "/{incident_id}/remediations",
+    response_model=RemediationDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Manually propose a new remediation recommendation for an incident",
+)
+def propose_incident_remediation(
+    incident_id: str,
+    payload: RemediationProposeRequest,
+    project_id: Optional[UUID] = Query(None, description="Optional project UUID for tenant isolation"),
+    db: Session = Depends(get_db),
+) -> RemediationDetailResponse:
+    from app.services.remediation.service import RemediationService
+    service = RemediationService(db)
+    try:
+        return service.propose_remediation(incident_id, req=payload, project_id=project_id)
+    except IncidentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except ProjectIsolationError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
 

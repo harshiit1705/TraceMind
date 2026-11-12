@@ -9,3 +9,4 @@ export * from './settings';
 export * from './telemetry';
 export * from './correlation';
 export * from './project';
+export * from './remediation';

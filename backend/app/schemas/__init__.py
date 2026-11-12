@@ -23,7 +23,18 @@ from app.schemas.incident import (
 )
 from app.schemas.evidence import EvidenceResponse, EvidenceListResponse
 from app.schemas.finding import FindingResponse
-from app.schemas.recommendation import RecommendationResponse
+from app.schemas.recommendation import (
+    RecommendationResponse,
+    RemediationStatus,
+    RemediationExecutionMode,
+    AllowlistedAction,
+    RemediationApproveRequest,
+    RemediationRejectRequest,
+    RemediationExecuteRequest,
+    RemediationCancelRequest,
+    RemediationProposeRequest,
+    RemediationDetailResponse,
+)
 from app.schemas.investigation import (
     InvestigationResponse,
     InvestigationDetailResponse,
