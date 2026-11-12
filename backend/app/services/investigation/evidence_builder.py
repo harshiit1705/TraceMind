@@ -3,7 +3,7 @@
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -17,6 +17,14 @@ from app.models.correlation import (
 from app.models.project import Project
 from app.models.service import Service
 from app.models.service_dependency import ServiceDependency
+from app.models.telemetry import ApplicationLog, TraceSpan
+from app.schemas.correlation import (
+    BottleneckSpanEvidence,
+    CorrelatedLogHighlight,
+    MultiSignalEvidenceSummary,
+    MultiSignalTimelineEntry,
+    ServiceMetricEvidence,
+)
 from app.schemas.investigation import (
     EvidenceCandidateItem,
     EvidenceDependencyItem,
@@ -242,6 +250,16 @@ class EvidenceBuilder:
             sanitized_reasons = _sanitize_dict(raw_reasons)
             supporting_ev = [redact_secrets(s) or "" for s in raw_reasons.get("supporting_evidence", [])]
             limitations = [redact_secrets(l) or "" for l in raw_reasons.get("limitations", [])]
+            contradictory_ev = [redact_secrets(x) or "" for x in raw_reasons.get("contradictory_evidence", [])]
+            neutral_sigs = [redact_secrets(x) or "" for x in raw_reasons.get("neutral_signals", [])]
+            missing_sigs = [redact_secrets(x) or "" for x in raw_reasons.get("missing_signals", [])]
+            breakdown_raw = raw_reasons.get("breakdown") or {}
+
+            def _dim_score(dim_name: str) -> Optional[float]:
+                dim = breakdown_raw.get(dim_name)
+                if isinstance(dim, dict) and dim.get("available", True) and isinstance(dim.get("score"), (int, float)):
+                    return float(dim["score"])
+                return None
 
             candidate_items.append(
                 EvidenceCandidateItem(
@@ -260,10 +278,118 @@ class EvidenceBuilder:
                     reasons=sanitized_reasons,
                     supporting_evidence=supporting_ev,
                     limitations=limitations,
+                    primary_suspected_operation=redact_secrets(raw_reasons.get("primary_suspected_operation")),
+                    affected_downstream_services=[
+                        redact_secrets(s) or "" for s in raw_reasons.get("affected_downstream_services", [])
+                    ],
+                    contradictory_evidence=contradictory_ev,
+                    neutral_signals=neutral_sigs,
+                    missing_signals=missing_sigs,
+                    scoring_mode=str(raw_reasons.get("scoring_mode") or "baseline_v1"),
+                    metric_deviation_score=_dim_score("metric_deviation"),
+                    log_evidence_score=_dim_score("log_evidence"),
+                    trace_bottleneck_score=_dim_score("trace_bottleneck"),
                 )
             )
 
-        # 5. Represent missing evidence and unmapped topology explicitly
+        # 5. Consume persisted Phase 2 multi-signal evidence snapshot (or compute read-only if missing)
+        ms_summary: Optional[MultiSignalEvidenceSummary] = None
+        if group.multi_signal_evidence_json:
+            try:
+                ms_summary = MultiSignalEvidenceSummary(**group.multi_signal_evidence_json)
+            except Exception:
+                ms_summary = None
+
+        if ms_summary is None:
+            from app.services.intelligence.evidence_retriever import MultiSignalEvidenceRetriever
+
+            all_services_list = self.db.query(Service).filter(Service.project_id == group.project_id).all()
+            all_services_map = {s.id: s for s in all_services_list}
+            cluster_services = {sid: all_services_map[sid] for sid in participating_service_ids if sid in all_services_map}
+            all_deps = self.db.query(ServiceDependency).filter(ServiceDependency.project_id == group.project_id).all()
+            downstream_map: Dict[UUID, Set[UUID]] = {s.id: set() for s in all_services_list}
+            for dep in all_deps:
+                if dep.source_service_id in downstream_map and dep.target_service_id in downstream_map:
+                    downstream_map[dep.target_service_id].add(dep.source_service_id)
+            anomaly_rows = [
+                self.db.query(AnomalyEvent).filter(AnomalyEvent.id == e.event_id).first()
+                for e in event_items
+            ]
+            valid_anomalies = [a for a in anomaly_rows if a is not None]
+            ms_summary = MultiSignalEvidenceRetriever(self.db).retrieve(
+                project_id=group.project_id,
+                window_start=group.time_window_start,
+                window_end=group.time_window_end,
+                services_map=cluster_services,
+                anomaly_events=valid_anomalies,
+                downstream_map=downstream_map,
+                correlation_group_id=group.id,
+                topology_complete=group.topology_complete,
+                all_services_map=all_services_map,
+            ).summary
+
+        # Sanitize & bound multi-signal lists so prompt remains safe and within context budgets
+        sanitized_metrics: List[ServiceMetricEvidence] = [
+            ServiceMetricEvidence(
+                **{
+                    **m.model_dump(),
+                    "service_name": redact_secrets(m.service_name) or "",
+                    "service_slug": redact_secrets(m.service_slug) or "",
+                    "metric_name": redact_secrets(m.metric_name) or "",
+                }
+            )
+            for m in ms_summary.metric_summaries[:25]
+        ]
+        sanitized_logs: List[CorrelatedLogHighlight] = [
+            CorrelatedLogHighlight(
+                **{
+                    **lg.model_dump(),
+                    "service_name": redact_secrets(lg.service_name) or "",
+                    "message": (redact_secrets(lg.message) or "")[:500],
+                    "exception_type": redact_secrets(lg.exception_type),
+                }
+            )
+            for lg in ms_summary.log_highlights[:20]
+        ]
+        sanitized_spans: List[BottleneckSpanEvidence] = [
+            BottleneckSpanEvidence(
+                **{
+                    **tb.model_dump(),
+                    "service_name": redact_secrets(tb.service_name) or "",
+                    "operation_name": redact_secrets(tb.operation_name) or "",
+                    "error_message": redact_secrets(tb.error_message),
+                }
+            )
+            for tb in ms_summary.trace_bottlenecks[:20]
+        ]
+        sanitized_timeline: List[MultiSignalTimelineEntry] = [
+            MultiSignalTimelineEntry(
+                **{
+                    **tl.model_dump(),
+                    "service_name": redact_secrets(tl.service_name) or "",
+                    "title": redact_secrets(tl.title) or "",
+                    "detail": (redact_secrets(tl.detail) or "")[:300],
+                }
+            )
+            for tl in ms_summary.multi_signal_timeline[:30]
+            if hasattr(ms_summary, "multi_signal_timeline")
+        ] if hasattr(ms_summary, "multi_signal_timeline") else [
+            MultiSignalTimelineEntry(
+                **{
+                    **tl.model_dump(),
+                    "service_name": redact_secrets(tl.service_name) or "",
+                    "title": redact_secrets(tl.title) or "",
+                    "detail": (redact_secrets(tl.detail) or "")[:300],
+                }
+            )
+            for tl in ms_summary.timeline[:30]
+        ]
+        sanitized_contradictions = [redact_secrets(x) or "" for x in ms_summary.contradictory_signals[:15]]
+        sanitized_neutral = [redact_secrets(x) or "" for x in ms_summary.neutral_signals[:15]]
+        sanitized_primary_op = redact_secrets(ms_summary.primary_suspected_operation)
+        sanitized_downstream = [redact_secrets(x) or "" for x in ms_summary.affected_downstream_services[:15]]
+
+        # 6. Represent missing evidence and unmapped topology explicitly
         if not group.topology_complete:
             missing_evidence.append(
                 "Incomplete service dependency topology: one or more participating services lack registered DAG edges."
@@ -272,11 +398,24 @@ class EvidenceBuilder:
         if not event_items:
             missing_evidence.append("Correlation group contains zero valid anomaly events.")
 
-        # Always explicitly disclose uninstrumented telemetry sources
-        unobserved_telemetry = [
-            "Raw application logs (e.g. Loki, Elasticsearch) are uninstrumented; no log lines exist.",
-            "Distributed trace spans (e.g. OpenTelemetry, Jaeger) are uninstrumented; no trace spans exist.",
-        ]
+        for un_note in ms_summary.uncertainty_notes:
+            s_note = redact_secrets(un_note) or ""
+            if s_note and s_note not in missing_evidence:
+                missing_evidence.append(s_note)
+
+        unobserved_telemetry: List[str] = []
+        if not ms_summary.coverage.metrics_available:
+            unobserved_telemetry.append(
+                "No persisted application metric samples were recorded in the correlation window."
+            )
+        if not ms_summary.coverage.logs_available:
+            unobserved_telemetry.append(
+                "No persisted structured application logs were recorded in the correlation window."
+            )
+        if not ms_summary.coverage.traces_available:
+            unobserved_telemetry.append(
+                "No persisted distributed trace spans were recorded in the correlation window."
+            )
 
         topo_explanation = (
             "Verified DAG: All participating services have registered dependency edges in project topology."
@@ -317,13 +456,14 @@ class EvidenceBuilder:
                 }
                 for c in candidate_items
             ],
+            "multi_signal_snapshot_hash": ms_summary.evidence_hash,
         }
 
         canonical_json = json.dumps(canonical_dict, sort_keys=True)
         evidence_hash = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
         return EvidencePackage(
-            package_version="1.0",
+            package_version="2.0",
             correlation_group_id=group.id,
             project_id=group.project_id,
             project_slug=proj_slug,
@@ -338,5 +478,15 @@ class EvidenceBuilder:
             ranked_candidates=candidate_items,
             missing_evidence=missing_evidence,
             unobserved_telemetry=unobserved_telemetry,
+            signal_coverage=ms_summary.coverage,
+            metric_evidence=sanitized_metrics,
+            log_evidence=sanitized_logs,
+            trace_bottlenecks=sanitized_spans,
+            multi_signal_timeline=sanitized_timeline,
+            contradictory_signals=sanitized_contradictions,
+            neutral_signals=sanitized_neutral,
+            primary_suspected_operation=sanitized_primary_op,
+            affected_downstream_services=sanitized_downstream,
+            source_evidence_snapshot_hash=ms_summary.evidence_hash,
             evidence_hash=evidence_hash,
         )

@@ -18,98 +18,90 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Modify incident_id to be nullable so investigations can exist independently for CorrelationGroups
-    op.alter_column(
-        'investigations',
-        'incident_id',
-        existing_type=postgresql.UUID(as_uuid=True),
-        nullable=True,
-    )
-
-    # 2. Add correlation_group_id with SET NULL on delete to preserve audit history
-    op.add_column(
-        'investigations',
-        sa.Column(
-            'correlation_group_id',
-            postgresql.UUID(as_uuid=True),
-            sa.ForeignKey('correlation_groups.id', ondelete='SET NULL'),
+    with op.batch_alter_table('investigations', schema=None) as batch_op:
+        # 1. Modify incident_id to be nullable so investigations can exist independently for CorrelationGroups
+        batch_op.alter_column(
+            'incident_id',
+            existing_type=postgresql.UUID(as_uuid=True),
             nullable=True,
         )
-    )
-    op.create_index('ix_investigations_correlation_group_id', 'investigations', ['correlation_group_id'])
 
-    # 3. Add AI provider and model execution metadata
-    op.add_column(
-        'investigations',
-        sa.Column('provider', sa.String(length=64), server_default='google-gemini', nullable=False)
-    )
-    op.add_column(
-        'investigations',
-        sa.Column('model_name', sa.String(length=64), server_default='gemini-2.0-flash', nullable=False)
-    )
-    op.add_column(
-        'investigations',
-        sa.Column('prompt_version', sa.String(length=32), server_default='v1.0', nullable=False)
-    )
-    op.add_column(
-        'investigations',
-        sa.Column('schema_version', sa.String(length=32), server_default='v1.0', nullable=False)
-    )
+        # 2. Add correlation_group_id with SET NULL on delete to preserve audit history
+        batch_op.add_column(
+            sa.Column(
+                'correlation_group_id',
+                postgresql.UUID(as_uuid=True),
+                sa.ForeignKey(
+                    'correlation_groups.id',
+                    ondelete='SET NULL',
+                    name='fk_investigations_correlation_group_id',
+                ),
+                nullable=True,
+            )
+        )
+        batch_op.create_index('ix_investigations_correlation_group_id', ['correlation_group_id'])
 
-    # 4. Add validated structured investigation payload and evidence hash
-    op.add_column(
-        'investigations',
-        sa.Column('investigation_json', postgresql.JSONB(astext_type=sa.Text()), nullable=True)
-    )
-    op.add_column(
-        'investigations',
-        sa.Column('evidence_hash', sa.String(length=64), nullable=True)
-    )
-    op.create_index('ix_investigations_evidence_hash', 'investigations', ['evidence_hash'])
+        # 3. Add AI provider and model execution metadata
+        batch_op.add_column(
+            sa.Column('provider', sa.String(length=64), server_default='google-gemini', nullable=False)
+        )
+        batch_op.add_column(
+            sa.Column('model_name', sa.String(length=64), server_default='gemini-2.0-flash', nullable=False)
+        )
+        batch_op.add_column(
+            sa.Column('prompt_version', sa.String(length=32), server_default='v1.0', nullable=False)
+        )
+        batch_op.add_column(
+            sa.Column('schema_version', sa.String(length=32), server_default='v1.0', nullable=False)
+        )
 
-    # 5. Add token usage, latency, and sanitized error tracking
-    op.add_column(
-        'investigations',
-        sa.Column('prompt_tokens', sa.Integer(), server_default='0', nullable=False)
-    )
-    op.add_column(
-        'investigations',
-        sa.Column('completion_tokens', sa.Integer(), server_default='0', nullable=False)
-    )
-    op.add_column(
-        'investigations',
-        sa.Column('total_tokens', sa.Integer(), server_default='0', nullable=False)
-    )
-    op.add_column(
-        'investigations',
-        sa.Column('latency_ms', sa.Integer(), server_default='0', nullable=False)
-    )
-    op.add_column(
-        'investigations',
-        sa.Column('error_message', sa.Text(), nullable=True)
-    )
+        # 4. Add validated structured investigation payload and evidence hash
+        batch_op.add_column(
+            sa.Column('investigation_json', postgresql.JSONB(astext_type=sa.Text()), nullable=True)
+        )
+        batch_op.add_column(
+            sa.Column('evidence_hash', sa.String(length=64), nullable=True)
+        )
+        batch_op.create_index('ix_investigations_evidence_hash', ['evidence_hash'])
+
+        # 5. Add token usage, latency, and sanitized error tracking
+        batch_op.add_column(
+            sa.Column('prompt_tokens', sa.Integer(), server_default='0', nullable=False)
+        )
+        batch_op.add_column(
+            sa.Column('completion_tokens', sa.Integer(), server_default='0', nullable=False)
+        )
+        batch_op.add_column(
+            sa.Column('total_tokens', sa.Integer(), server_default='0', nullable=False)
+        )
+        batch_op.add_column(
+            sa.Column('latency_ms', sa.Integer(), server_default='0', nullable=False)
+        )
+        batch_op.add_column(
+            sa.Column('error_message', sa.Text(), nullable=True)
+        )
 
 
 def downgrade() -> None:
-    op.drop_column('investigations', 'error_message')
-    op.drop_column('investigations', 'latency_ms')
-    op.drop_column('investigations', 'total_tokens')
-    op.drop_column('investigations', 'completion_tokens')
-    op.drop_column('investigations', 'prompt_tokens')
-    op.drop_index('ix_investigations_evidence_hash', 'investigations')
-    op.drop_column('investigations', 'evidence_hash')
-    op.drop_column('investigations', 'investigation_json')
-    op.drop_column('investigations', 'schema_version')
-    op.drop_column('investigations', 'prompt_version')
-    op.drop_column('investigations', 'model_name')
-    op.drop_column('investigations', 'provider')
-    op.drop_index('ix_investigations_correlation_group_id', 'investigations')
-    op.drop_column('investigations', 'correlation_group_id')
+    with op.batch_alter_table('investigations', schema=None) as batch_op:
+        batch_op.drop_column('error_message')
+        batch_op.drop_column('latency_ms')
+        batch_op.drop_column('total_tokens')
+        batch_op.drop_column('completion_tokens')
+        batch_op.drop_column('prompt_tokens')
+        batch_op.drop_index('ix_investigations_evidence_hash')
+        batch_op.drop_column('evidence_hash')
+        batch_op.drop_column('investigation_json')
+        batch_op.drop_column('schema_version')
+        batch_op.drop_column('prompt_version')
+        batch_op.drop_column('model_name')
+        batch_op.drop_column('provider')
+        batch_op.drop_index('ix_investigations_correlation_group_id')
+        batch_op.drop_column('correlation_group_id')
 
-    op.alter_column(
-        'investigations',
-        'incident_id',
-        existing_type=postgresql.UUID(as_uuid=True),
-        nullable=False,
-    )
+        batch_op.alter_column(
+            'incident_id',
+            existing_type=postgresql.UUID(as_uuid=True),
+            nullable=False,
+        )
 

@@ -10,11 +10,14 @@ from app.schemas.correlation import (
     CorrelationEvaluationRequest,
     CorrelationEvaluationResponse,
     CorrelationGroupResponse,
+    MultiSignalEvidenceSummary,
     RootCauseCandidateResponse,
 )
 from app.schemas.investigation import GroundedInvestigationResponse
 from app.services.correlation.service import (
+    CorrelationGroupImmutableError,
     CorrelationGroupNotFoundError,
+    CorrelationProjectIsolationError,
     CorrelationService,
     ProjectNotFoundError,
 )
@@ -129,6 +132,89 @@ def get_root_cause_candidates(
 
 
 @router.get(
+    "/{correlation_id}/evidence",
+    response_model=MultiSignalEvidenceSummary,
+    summary="Retrieve correlated multi-signal telemetry evidence for a correlation group",
+)
+def get_correlation_evidence(
+    correlation_id: UUID,
+    x_project_id: Optional[str] = Header(None, alias="X-Project-Id", description="Optional project context header"),
+    db: Session = Depends(get_db),
+) -> MultiSignalEvidenceSummary:
+    """Retrieve correlated metrics, logs, trace bottlenecks, timeline, and signal coverage."""
+    expected_proj_uuid: Optional[UUID] = None
+    if x_project_id:
+        try:
+            expected_proj_uuid = UUID(x_project_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid X-Project-Id header format. Must be a valid UUID.",
+            )
+
+    service = CorrelationService(db)
+    try:
+        return service.get_group_evidence(
+            correlation_id=correlation_id,
+            expected_project_id=expected_proj_uuid,
+        )
+    except CorrelationGroupNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+    except CorrelationProjectIsolationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+
+
+@router.post(
+    "/{correlation_id}/recalculate",
+    response_model=CorrelationGroupResponse,
+    summary="Deterministically recalculate multi-signal evidence and root-cause ranking",
+)
+def recalculate_correlation_group(
+    correlation_id: UUID,
+    x_project_id: Optional[str] = Header(None, alias="X-Project-Id", description="Optional project context header"),
+    db: Session = Depends(get_db),
+) -> CorrelationGroupResponse:
+    """Recompute multi-signal evidence and root-cause ranking from persisted telemetry for an active group."""
+    expected_proj_uuid: Optional[UUID] = None
+    if x_project_id:
+        try:
+            expected_proj_uuid = UUID(x_project_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid X-Project-Id header format. Must be a valid UUID.",
+            )
+
+    service = CorrelationService(db)
+    try:
+        return service.recalculate_group(
+            correlation_id=correlation_id,
+            expected_project_id=expected_proj_uuid,
+        )
+    except CorrelationGroupNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+    except CorrelationProjectIsolationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+    except CorrelationGroupImmutableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )
+
+
+@router.get(
     "/{correlation_group_id}/investigation",
     response_model=Optional[GroundedInvestigationResponse],
     status_code=status.HTTP_200_OK,
@@ -179,6 +265,6 @@ def get_correlation_investigation(
     if not inv:
         return None
 
-    return GroundedInvestigationResponse.model_validate(inv)
+    return inv_service.to_grounded_response(inv)
 
 

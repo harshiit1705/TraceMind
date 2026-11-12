@@ -331,13 +331,19 @@ export const DependencyMapPage: React.FC = () => {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-space-md items-start">
         {/* Topology Canvas (8 cols on xl, 9 on 2xl) */}
         <div className="xl:col-span-8 2xl:col-span-9 bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-space-md shadow-sm relative overflow-hidden flex flex-col min-h-[700px]">
-          {/* Root Cause Warning Floating Pill */}
-          <div className="absolute top-space-md right-space-md z-20 flex items-center gap-2 bg-error text-on-error px-3 py-1.5 rounded-lg shadow-md animate-pulse">
-            <span className="material-symbols-outlined text-[16px]">priority_high</span>
-            <span className="font-caption-ui text-caption-ui font-semibold uppercase tracking-wider">
-              Root Cause: Connection Pool Exhaustion
-            </span>
-          </div>
+          {/* Root Cause Warning Floating Pill (derived from live topology/correlation data) */}
+          {(() => {
+            const rootNodes = (topology?.nodes || []).filter((n) => n.isRootCause);
+            if (rootNodes.length === 0) return null;
+            return (
+              <div className="absolute top-space-md right-space-md z-20 flex items-center gap-2 bg-error text-on-error px-3 py-1.5 rounded-lg shadow-md">
+                <span className="material-symbols-outlined text-[16px]">priority_high</span>
+                <span className="font-caption-ui text-caption-ui font-semibold uppercase tracking-wider">
+                  Probable Root Cause: {rootNodes.map((n) => n.name).join(', ')}
+                </span>
+              </div>
+            );
+          })()}
 
           {/* Interactive React Flow Canvas */}
           <div className="w-full h-[620px] rounded-lg bg-surface border border-outline-variant/20 overflow-hidden relative">
@@ -574,23 +580,30 @@ export const DependencyMapPage: React.FC = () => {
                 <Button
                   variant="surface"
                   icon="insights"
-                  onClick={() => navigate('/traces')}
+                  onClick={() => navigate(`/traces?service=${encodeURIComponent(selectedNode.id)}`)}
                 >
-                  Investigate Active Traces
+                  Inspect Service Traces
+                </Button>
+                <Button
+                  variant="surface"
+                  icon="article"
+                  onClick={() => navigate(`/logs?service=${encodeURIComponent(selectedNode.id)}`)}
+                >
+                  Inspect Service Logs
                 </Button>
                 <Button
                   variant="primary"
+                  icon="auto_awesome"
+                  onClick={() => navigate('/ai-investigations')}
+                >
+                  Open Multi-Signal RCA
+                </Button>
+                <Button
+                  variant="secondary"
                   icon="crisis_alert"
                   onClick={() => navigate('/incidents')}
                 >
                   Open Incidents War Room
-                </Button>
-                <Button
-                  variant="secondary"
-                  icon="dns"
-                  onClick={() => navigate('/services')}
-                >
-                  View Service Registry
                 </Button>
               </div>
             </div>

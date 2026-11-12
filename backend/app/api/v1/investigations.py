@@ -171,7 +171,7 @@ def get_investigation(
         )
 
     if inv and inv.correlation_group_id is not None:
-        return GroundedInvestigationResponse.model_validate(inv)
+        return inv_service.to_grounded_response(inv)
 
     # 2. Fall back to legacy incident investigation service if not a correlation investigation
     legacy_service = IncidentService(db)

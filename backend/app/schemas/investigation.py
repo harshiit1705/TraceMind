@@ -1,9 +1,16 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from app.schemas.common import InvestigationStatus
+from app.schemas.correlation import (
+    BottleneckSpanEvidence,
+    CorrelatedLogHighlight,
+    MultiSignalTimelineEntry,
+    ServiceMetricEvidence,
+    SignalCoverageSummary,
+)
 from app.schemas.finding import FindingResponse
 from app.schemas.recommendation import RecommendationResponse
 
@@ -77,13 +84,22 @@ class EvidenceCandidateItem(BaseModel):
     reasons: Dict[str, Any] = Field(default_factory=dict)
     supporting_evidence: List[str] = Field(default_factory=list)
     limitations: List[str] = Field(default_factory=list)
+    primary_suspected_operation: Optional[str] = None
+    affected_downstream_services: List[str] = Field(default_factory=list)
+    contradictory_evidence: List[str] = Field(default_factory=list)
+    neutral_signals: List[str] = Field(default_factory=list)
+    missing_signals: List[str] = Field(default_factory=list)
+    scoring_mode: str = "baseline_v1"
+    metric_deviation_score: Optional[float] = None
+    log_evidence_score: Optional[float] = None
+    trace_bottleneck_score: Optional[float] = None
 
 
 class EvidencePackage(BaseModel):
     """Deterministic, verified, sanitized evidence package passed to Gemini or inspection."""
     model_config = ConfigDict(extra="forbid")
 
-    package_version: str = "1.0"
+    package_version: str = "2.0"
     correlation_group_id: UUID
     project_id: UUID
     project_slug: str
@@ -98,6 +114,16 @@ class EvidencePackage(BaseModel):
     ranked_candidates: List[EvidenceCandidateItem]
     missing_evidence: List[str] = Field(default_factory=list)
     unobserved_telemetry: List[str] = Field(default_factory=list)
+    signal_coverage: Optional[SignalCoverageSummary] = None
+    metric_evidence: List[ServiceMetricEvidence] = Field(default_factory=list)
+    log_evidence: List[CorrelatedLogHighlight] = Field(default_factory=list)
+    trace_bottlenecks: List[BottleneckSpanEvidence] = Field(default_factory=list)
+    multi_signal_timeline: List[MultiSignalTimelineEntry] = Field(default_factory=list)
+    contradictory_signals: List[str] = Field(default_factory=list)
+    neutral_signals: List[str] = Field(default_factory=list)
+    primary_suspected_operation: Optional[str] = None
+    affected_downstream_services: List[str] = Field(default_factory=list)
+    source_evidence_snapshot_hash: Optional[str] = None
     evidence_hash: str
 
 
@@ -129,9 +155,12 @@ class EvidenceReference(BaseModel):
     """Reference identifying an actual persisted source telemetry record."""
     model_config = ConfigDict(extra="forbid")
 
-    source_record_type: str = Field(..., description="anomaly_event, service_dependency, or baseline")
-    source_id: UUID = Field(..., description="UUID of the cited database record")
-    supported_field: str = Field(..., description="Field cited from source record (e.g. deviation_pct, observed_value)")
+    source_record_type: str = Field(
+        ...,
+        description="anomaly_event, service_dependency, root_cause_candidate, correlation_group, baseline, metric_summary, application_log, or trace_span",
+    )
+    source_id: Union[UUID, str] = Field(..., description="ID of the cited source record (UUID, span_id, trace_id, or service_id:metric)")
+    supported_field: str = Field(..., description="Field cited from source record (e.g. deviation_pct, self_time_ms, level)")
     summary_citation: str = Field(..., min_length=5)
 
 
@@ -171,7 +200,15 @@ class RemediationRecommendation(BaseModel):
     )
     command_snippet: Optional[str] = Field(
         default=None,
-        description="Autonomous execution is prohibited in Sprint 5.1",
+        description="Autonomous execution is prohibited in Phase 3",
+    )
+    expected_result: Optional[str] = Field(
+        default=None,
+        description="Expected observable telemetry outcome if applied",
+    )
+    verification_steps: List[str] = Field(
+        default_factory=list,
+        description="How an engineer can verify whether the remediation succeeded",
     )
 
     @field_validator("requires_human_approval")
@@ -194,9 +231,28 @@ class InvestigationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     incident_summary: str = Field(..., min_length=20)
+    conclusion_status: str = Field(
+        default="CONCLUSIVE",
+        description="CONCLUSIVE, CORRELATION_ONLY, or INCONCLUSIVE",
+    )
+    confidence_level: str = Field(
+        default="MEDIUM",
+        description="HIGH, MEDIUM, or LOW",
+    )
+    confidence_explanation: Optional[str] = Field(
+        default=None,
+        description="Why the stated confidence level is appropriate given signal quality and gaps",
+    )
+    suspected_operation: Optional[str] = Field(
+        default=None,
+        description="Most likely responsible endpoint/operation if supported by trace/log evidence",
+    )
     timeline: List[TimelineEvidenceEvent] = Field(..., min_length=1)
     root_cause_analysis: RootCauseEvidenceExplanation = Field(...)
+    alternative_explanations: List[str] = Field(default_factory=list)
     evidence_references: List[EvidenceReference] = Field(default_factory=list)
+    contradictory_evidence: List[str] = Field(default_factory=list)
+    neutral_evidence: List[str] = Field(default_factory=list)
     uncertainties_and_gaps: List[UncertaintyGap] = Field(default_factory=list)
     prioritized_investigation_steps: List[InvestigationStep] = Field(default_factory=list)
     remediation_recommendations: List[RemediationRecommendation] = Field(default_factory=list)
@@ -224,6 +280,8 @@ class GroundedInvestigationResponse(BaseModel):
     schema_version: str
     status: str
     evidence_hash: Optional[str] = None
+    evidence_stale: bool = False
+    latest_evidence_hash: Optional[str] = None
     result: Optional[InvestigationResult] = None
     investigation_json: Optional[Dict[str, Any]] = None
     prompt_tokens: int = 0

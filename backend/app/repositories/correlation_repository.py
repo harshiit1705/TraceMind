@@ -1,6 +1,6 @@
 """Repository for persisting and querying correlation groups and ranked root-cause candidates."""
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 from sqlalchemy.orm import Session
 from app.models.correlation import (
@@ -8,7 +8,7 @@ from app.models.correlation import (
     CorrelationGroup,
     RootCauseCandidate,
 )
-from app.schemas.correlation import CorrelationGroupResponse
+from app.schemas.correlation import CorrelationGroupResponse, RootCauseCandidateResponse
 
 
 class CorrelationRepository:
@@ -116,6 +116,12 @@ class CorrelationRepository:
         superseded = self.supersede_subsumed_active_groups(evaluated.project_id, target_event_ids)
 
         new_group_id = uuid4()
+        ev_summary_json: Optional[Dict[str, Any]] = None
+        if evaluated.evidence_summary is not None:
+            ev_dump = evaluated.evidence_summary.model_dump(mode="json")
+            ev_dump["correlation_group_id"] = str(new_group_id)
+            ev_summary_json = ev_dump
+
         group_row = CorrelationGroup(
             id=new_group_id,
             project_id=evaluated.project_id,
@@ -126,6 +132,7 @@ class CorrelationRepository:
             summary=evaluated.summary,
             confidence_score=evaluated.confidence_score,
             topology_complete=evaluated.topology_complete,
+            multi_signal_evidence_json=ev_summary_json,
         )
         self.db.add(group_row)
 
@@ -163,5 +170,51 @@ class CorrelationRepository:
         else:
             self.db.flush()
         group_row._superseded_groups = superseded
+        return group_row
+
+    def replace_analysis_snapshot(
+        self,
+        group_row: CorrelationGroup,
+        ranked_candidates: List[RootCauseCandidateResponse],
+        evidence_summary_json: Optional[Dict[str, Any]],
+        summary_text: str,
+        confidence_score: float,
+        topology_complete: bool,
+        commit: bool = True,
+    ) -> CorrelationGroup:
+        """Deterministically replace ranked candidates and multi-signal evidence snapshot on a group."""
+        group_row.summary = summary_text
+        group_row.confidence_score = confidence_score
+        group_row.topology_complete = topology_complete
+        if evidence_summary_json is not None:
+            evidence_summary_json["correlation_group_id"] = str(group_row.id)
+        group_row.multi_signal_evidence_json = evidence_summary_json
+
+        # Delete existing candidates via orphan-cascade and flush before re-inserting unique (group, service/rank)
+        group_row.root_cause_candidates.clear()
+        self.db.flush()
+
+        for c in ranked_candidates:
+            cand_row = RootCauseCandidate(
+                id=uuid4(),
+                correlation_group_id=group_row.id,
+                service_id=c.service_id,
+                rank=c.rank,
+                score=c.score,
+                confidence=c.confidence.value,
+                is_probable_root_cause=c.is_probable_root_cause,
+                temporal_precedence_score=c.breakdown.temporal_precedence.score,
+                topological_score=c.breakdown.topological_position.score,
+                blast_radius_score=c.breakdown.blast_radius.score,
+                severity_score=c.breakdown.severity_magnitude.score,
+                reasons_json=c.model_dump(mode="json"),
+            )
+            self.db.add(cand_row)
+
+        if commit:
+            self.db.commit()
+            self.db.refresh(group_row)
+        else:
+            self.db.flush()
         return group_row
 

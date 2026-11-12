@@ -521,13 +521,13 @@ export const IncidentsPage: React.FC = () => {
                           {incident.title}
                         </span>
                         <div className="flex items-center gap-2 text-on-surface-variant font-caption-ui text-caption-ui">
-                          {isCritical && (
-                            <span className="inline-flex items-center gap-1 text-error font-medium">
-                              <span className="material-symbols-outlined text-[14px]">trending_down</span>
-                              Error rate: 24.8%
+                          {incident.correlationGroupId && (
+                            <span className="inline-flex items-center gap-1 text-primary font-medium">
+                              <span className="material-symbols-outlined text-[14px]">hub</span>
+                              Multi-Signal RCA
                             </span>
                           )}
-                          {isCritical && <span>•</span>}
+                          {incident.correlationGroupId && <span>•</span>}
                           <span>
                             {incident.rootCauseSummary || 'Root cause under autonomous correlation'}
                           </span>

@@ -98,14 +98,130 @@ class RankingDimensionScore(BaseModel):
     weight: float = Field(..., ge=0.0, le=1.0, description="Relative algorithm weight.")
     weighted_score: float = Field(..., ge=0.0, le=1.0, description="score * weight.")
     reason: str = Field(..., description="Deterministic human-readable justification.")
+    available: bool = Field(
+        default=True,
+        description="False when underlying signal data was absent (no missing-signal penalty applied).",
+    )
 
 
 class RootCauseRankingBreakdown(BaseModel):
-    """Transparent ranking breakdown across all 4 deterministic causal dimensions."""
+    """Transparent ranking breakdown across deterministic causal & telemetry dimensions."""
     temporal_precedence: RankingDimensionScore
     topological_position: RankingDimensionScore
     blast_radius: RankingDimensionScore
     severity_magnitude: RankingDimensionScore
+    metric_deviation: Optional[RankingDimensionScore] = None
+    log_evidence: Optional[RankingDimensionScore] = None
+    trace_bottleneck: Optional[RankingDimensionScore] = None
+
+
+class SignalCoverageSummary(BaseModel):
+    """Availability and volume of each observability signal in the evaluation window."""
+    metrics_available: bool = False
+    logs_available: bool = False
+    traces_available: bool = False
+    topology_available: bool = False
+    anomalies_count: int = 0
+    metric_samples_count: int = 0
+    log_entries_count: int = 0
+    error_logs_count: int = 0
+    trace_spans_count: int = 0
+    traces_count: int = 0
+    incomplete_traces_count: int = 0
+    observed_signals: List[str] = Field(default_factory=list)
+    missing_signals: List[str] = Field(default_factory=list)
+
+
+class ServiceMetricEvidence(BaseModel):
+    """Bounded statistical comparison of persisted metrics against baseline for a service."""
+    service_id: UUID
+    service_slug: str
+    service_name: str
+    metric_name: str
+    metric_unit: str = ""
+    sample_count: int
+    baseline_sample_count: int = 0
+    min_value: float
+    max_value: float
+    mean_value: float
+    p95_value: Optional[float] = None
+    baseline_mean: Optional[float] = None
+    deviation_pct: Optional[float] = None
+    is_anomalous: bool = False
+    status: str = "normal"  # anomalous | normal | insufficient_samples
+    first_breach_at: Optional[datetime] = None
+
+
+class CorrelatedLogHighlight(BaseModel):
+    """Sanitized representative structured log entry correlated to the incident window or trace."""
+    log_id: UUID
+    service_id: UUID
+    service_slug: str
+    service_name: str
+    timestamp: datetime
+    level: str
+    message: str
+    trace_id: Optional[str] = None
+    request_id: Optional[str] = None
+    exception_type: Optional[str] = None
+    pattern_category: Optional[str] = None
+
+
+class BottleneckSpanEvidence(BaseModel):
+    """Trace span bottleneck / origin error record computed via exclusive self-time analysis."""
+    trace_id: str
+    span_id: str
+    parent_span_id: Optional[str] = None
+    service_id: UUID
+    service_slug: str
+    service_name: str
+    operation_name: str
+    span_kind: str
+    duration_ms: float
+    self_time_ms: float
+    self_time_share: float
+    status: str
+    http_status_code: Optional[int] = None
+    error_message: Optional[str] = None
+    start_time: datetime
+    is_origin_error: bool = False
+    is_bottleneck: bool = False
+    has_missing_parent: bool = False
+
+
+class MultiSignalTimelineEntry(BaseModel):
+    """Chronological merged timeline item across anomalies, metrics, logs, and traces."""
+    timestamp: datetime
+    signal_type: str  # anomaly | metric | log | trace
+    service_id: UUID
+    service_slug: str
+    service_name: str
+    severity: str
+    title: str
+    detail: str
+    reference_id: Optional[str] = None
+
+
+class MultiSignalEvidenceSummary(BaseModel):
+    """Canonical bounded snapshot of multi-signal evidence for a correlation group."""
+    correlation_group_id: Optional[UUID] = None
+    project_id: UUID
+    time_window_start: datetime
+    time_window_end: datetime
+    evidence_version: str = "2.0"
+    evidence_hash: Optional[str] = None
+    computed_at: datetime
+    coverage: SignalCoverageSummary
+    metric_summaries: List[ServiceMetricEvidence] = Field(default_factory=list)
+    log_highlights: List[CorrelatedLogHighlight] = Field(default_factory=list)
+    trace_bottlenecks: List[BottleneckSpanEvidence] = Field(default_factory=list)
+    timeline: List[MultiSignalTimelineEntry] = Field(default_factory=list)
+    primary_suspected_operation: Optional[str] = None
+    affected_downstream_services: List[str] = Field(default_factory=list)
+    contradictory_signals: List[str] = Field(default_factory=list)
+    neutral_signals: List[str] = Field(default_factory=list)
+    missing_signals: List[str] = Field(default_factory=list)
+    uncertainty_notes: List[str] = Field(default_factory=list)
 
 
 class RootCauseCandidateResponse(BaseModel):
@@ -124,6 +240,13 @@ class RootCauseCandidateResponse(BaseModel):
     breakdown: RootCauseRankingBreakdown
     supporting_evidence: List[str]
     limitations: List[str]
+    contradictory_evidence: List[str] = Field(default_factory=list)
+    neutral_signals: List[str] = Field(default_factory=list)
+    missing_signals: List[str] = Field(default_factory=list)
+    primary_suspected_operation: Optional[str] = None
+    affected_downstream_services: List[str] = Field(default_factory=list)
+    evidence_references: Dict[str, Any] = Field(default_factory=dict)
+    scoring_mode: str = "baseline_v1"
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -160,6 +283,9 @@ class CorrelationGroupResponse(BaseModel):
     events_count: int
     participating_events: List[CorrelatedEventSummary]
     ranked_candidates: List[RootCauseCandidateResponse]
+    evidence_summary: Optional[MultiSignalEvidenceSummary] = None
+    primary_suspected_operation: Optional[str] = None
+    uncertainty_summary: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

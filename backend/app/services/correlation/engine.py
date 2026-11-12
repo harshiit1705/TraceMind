@@ -20,6 +20,7 @@ from app.schemas.correlation import (
     CorrelatedEventSummary,
 )
 from app.services.correlation.ranker import RootCauseRanker
+from app.services.intelligence.evidence_retriever import MultiSignalEvidenceRetriever
 
 
 class CorrelationEngine:
@@ -30,6 +31,7 @@ class CorrelationEngine:
         self.event_repo = AnomalyEventRepository(db)
         self.dependency_repo = ServiceDependencyRepository(db)
         self.service_repo = ServiceRepository(db)
+        self.evidence_retriever = MultiSignalEvidenceRetriever(db)
 
     @staticmethod
     def generate_correlation_key(project_id: UUID, event_ids: List[UUID]) -> str:
@@ -208,11 +210,22 @@ class CorrelationEngine:
                 if seen_sids != cluster_service_ids:
                     cluster_topology_complete = False
 
-            # Rank root causes for this cluster
+            # Retrieve multi-signal telemetry evidence & rank root causes deterministically
             cluster_services = {sid: services_map[sid] for sid in cluster_service_ids if sid in services_map}
             cluster_events_by_svc: Dict[UUID, List[AnomalyEvent]] = {}
             for ev in cluster_events:
                 cluster_events_by_svc.setdefault(ev.service_id, []).append(ev)
+
+            multi_signal_bundle = self.evidence_retriever.retrieve(
+                project_id=project_id,
+                window_start=group_min_time,
+                window_end=group_max_time,
+                services_map=cluster_services,
+                anomaly_events=cluster_events,
+                downstream_map=downstream_map,
+                topology_complete=cluster_topology_complete,
+                all_services_map=services_map,
+            )
 
             ranked_candidates = RootCauseRanker.rank_candidates(
                 participating_services=cluster_services,
@@ -220,6 +233,7 @@ class CorrelationEngine:
                 upstream_map=upstream_map,
                 downstream_map=downstream_map,
                 topology_edges_exist=cluster_topology_complete,
+                multi_signal_bundle=multi_signal_bundle,
             )
 
             # Build explainability per participating anomaly event
@@ -284,8 +298,17 @@ class CorrelationEngine:
 
             # Overall group confidence score
             group_conf = top_candidate.score if top_candidate else 0.5
-            if not cluster_topology_complete:
+            if not cluster_topology_complete and not (
+                multi_signal_bundle.has_any_telemetry and top_candidate and top_candidate.breakdown.trace_bottleneck and top_candidate.breakdown.trace_bottleneck.score >= 0.75
+            ):
                 group_conf = round(group_conf * 0.70, 4)
+
+            primary_op = (
+                (top_candidate.primary_suspected_operation if top_candidate and top_candidate.primary_suspected_operation else None)
+                or multi_signal_bundle.summary.primary_suspected_operation
+            )
+            uncertainty_notes = multi_signal_bundle.summary.uncertainty_notes
+            uncertainty_summary = "; ".join(uncertainty_notes) if uncertainty_notes else None
 
             group_resp = CorrelationGroupResponse(
                 id=UUID(int=0),  # Will be assigned during persistence or generated
@@ -300,6 +323,9 @@ class CorrelationEngine:
                 events_count=len(cluster_events),
                 participating_events=participating_summaries,
                 ranked_candidates=ranked_candidates,
+                evidence_summary=multi_signal_bundle.summary,
+                primary_suspected_operation=primary_op,
+                uncertainty_summary=uncertainty_summary,
                 created_at=datetime.now(timezone.utc),
             )
             results.append(group_resp)

@@ -93,6 +93,12 @@ class InvestigationService:
                 f"Access denied: Correlation group '{correlation_group_id}' does not belong to authorized project."
             )
 
+        # Build current evidence package first (read-only) to verify snapshot & detect evidence drift
+        evidence = self.evidence_builder.build_evidence_package(
+            correlation_group_id=correlation_group_id,
+            expected_project_id=project_id,
+        )
+
         # Step B — Idempotency: Check existing investigations
         existing_investigation = (
             self.db.query(Investigation)
@@ -103,12 +109,20 @@ class InvestigationService:
 
         if existing_investigation and not force_regenerate:
             if existing_investigation.status == "COMPLETED":
+                if existing_investigation.evidence_hash == evidence.evidence_hash:
+                    logger.info(
+                        "Reusing existing COMPLETED investigation '%s' for correlation group '%s'",
+                        existing_investigation.id,
+                        correlation_group_id,
+                    )
+                    return existing_investigation
                 logger.info(
-                    "Reusing existing COMPLETED investigation '%s' for correlation group '%s'",
-                    existing_investigation.id,
+                    "Evidence hash changed for correlation group '%s' (%s -> %s); creating new versioned investigation while preserving historical record '%s'.",
                     correlation_group_id,
+                    existing_investigation.evidence_hash,
+                    evidence.evidence_hash,
+                    existing_investigation.id,
                 )
-                return existing_investigation
             elif existing_investigation.status in ("PENDING", "RUNNING"):
                 logger.info(
                     "Investigation '%s' is already '%s' for correlation group '%s'; returning active record.",
@@ -123,6 +137,7 @@ class InvestigationService:
         provider_name = getattr(self.provider, "provider_name", "google-gemini")
         model_name = getattr(self.provider, "model_name", settings.GEMINI_MODEL)
         event_count = len(group.event_associations) if group.event_associations else 0
+        spans_count = evidence.signal_coverage.trace_spans_count if evidence.signal_coverage else 0
 
         investigation = Investigation(
             correlation_group_id=correlation_group_id,
@@ -136,22 +151,16 @@ class InvestigationService:
             started_at=now_utc,
             is_demo=False,
             correlation_scope=event_count,
-            spans_analyzed=0,
+            spans_analyzed=spans_count,
             confidence_score=group.confidence_score,
+            evidence_hash=evidence.evidence_hash,
         )
         self.db.add(investigation)
         self.db.commit()
         self.db.refresh(investigation)
 
         try:
-            # Step D — Build grounded evidence package scoped to authorized project
-            evidence = self.evidence_builder.build_evidence_package(
-                correlation_group_id=correlation_group_id,
-                expected_project_id=project_id,
-            )
-            investigation.evidence_hash = evidence.evidence_hash
-
-            # Step E — Mark RUNNING before calling provider
+            # Step D/E — Mark RUNNING before calling provider
             investigation.status = "RUNNING"
             self.db.commit()
             self.db.refresh(investigation)
@@ -280,6 +289,18 @@ class InvestigationService:
             .first()
         )
         return latest_inv
+
+    def to_grounded_response(self, inv: Investigation) -> GroundedInvestigationResponse:
+        """Convert Investigation ORM row into GroundedInvestigationResponse with staleness check."""
+        dto = GroundedInvestigationResponse.model_validate(inv)
+        if inv.correlation_group_id and inv.status == "COMPLETED" and inv.evidence_hash:
+            try:
+                current_pkg = self.evidence_builder.build_evidence_package(inv.correlation_group_id)
+                dto.latest_evidence_hash = current_pkg.evidence_hash
+                dto.evidence_stale = (current_pkg.evidence_hash != inv.evidence_hash)
+            except Exception:
+                pass
+        return dto
 
     def _sanitize_error_message(self, exc: Exception) -> str:
         """Strips sensitive credentials, keys, or internal stack traces from error messages."""

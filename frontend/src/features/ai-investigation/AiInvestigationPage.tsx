@@ -24,6 +24,7 @@ export const AiInvestigationPage: React.FC = () => {
   // Status & Lifecycle
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
+  const [recalculating, setRecalculating] = useState<boolean>(false);
   const [error, setError] = useState<{ message: string; details?: Record<string, unknown> } | null>(null);
 
   // Helper: Determine if the active investigation is a legacy Phase 2.1 demo
@@ -232,6 +233,26 @@ export const AiInvestigationPage: React.FC = () => {
     }
   };
 
+  // Recalculate multi-signal deterministic correlation & RCA
+  const handleRecalculateRca = async () => {
+    if (!selectedCorrelation || recalculating) return;
+    setRecalculating(true);
+    setError(null);
+    try {
+      const res = await apiClient.recalculateCorrelation(selectedCorrelation.id);
+      setSelectedCorrelation(res.data);
+      setCorrelations((prev) => prev.map((g) => (g.id === res.data.id ? res.data : g)));
+    } catch (err: unknown) {
+      const e = err as { message?: string; details?: Record<string, unknown> };
+      setError({
+        message: e.message || 'Multi-signal RCA recalculation failed',
+        details: e.details,
+      });
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
   // Persisted Grounded Investigation Result
   const result: InvestigationResult | null = useMemo(() => {
     if (!investigation) return null;
@@ -423,13 +444,48 @@ export const AiInvestigationPage: React.FC = () => {
               <div className="flex items-center gap-space-xs">
                 <span className="w-1.5 h-4 rounded-full bg-primary" />
                 <h2 className="font-title-md text-title-md text-on-surface font-semibold">
-                  Gemini Root-Cause Synthesis & Incident Summary
+                  Gemini Multi-Signal Synthesis &amp; Incident Summary
                 </h2>
               </div>
-              <span className="px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed-variant font-mono-badge text-mono-badge font-semibold uppercase">
-                LLM SYNTHESIS • EVIDENCE GROUNDED
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {result.conclusion_status && (
+                  <span className={`px-2 py-0.5 rounded font-mono-badge text-mono-badge font-semibold uppercase ${
+                    result.conclusion_status === 'INCONCLUSIVE'
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200'
+                      : result.conclusion_status === 'CORRELATION_ONLY'
+                      ? 'bg-secondary-container text-on-secondary-fixed'
+                      : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                  }`}>
+                    {result.conclusion_status}
+                  </span>
+                )}
+                {result.confidence_level && (
+                  <span className="px-2 py-0.5 rounded bg-surface-container text-on-surface font-mono-badge text-mono-badge font-semibold uppercase">
+                    AI CONFIDENCE: {result.confidence_level}
+                  </span>
+                )}
+                <span className="px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed-variant font-mono-badge text-mono-badge font-semibold uppercase">
+                  LLM SYNTHESIS • EVIDENCE GROUNDED
+                </span>
+              </div>
             </div>
+
+            {investigation?.evidence_stale && (
+              <div className="p-space-sm rounded-lg bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="text-amber-900 dark:text-amber-200">
+                  Underlying multi-signal evidence was recalculated after this investigation was generated. Historical snapshot preserved.
+                </span>
+                <Button
+                  variant="surface"
+                  size="sm"
+                  icon="replay"
+                  disabled={generating}
+                  onClick={() => handleTriggerInvestigation(true)}
+                >
+                  Re-run on Updated Evidence
+                </Button>
+              </div>
+            )}
 
             {/* Incident Summary Paragraph */}
             <div className="p-space-md rounded-lg bg-surface-container-low flex flex-col gap-space-xs border border-outline-variant/20">
@@ -439,19 +495,29 @@ export const AiInvestigationPage: React.FC = () => {
               <p className="font-body-default text-body-default text-on-surface leading-relaxed">
                 {result.incident_summary}
               </p>
+              {result.confidence_explanation && (
+                <p className="text-xs text-secondary italic pt-1 border-t border-outline-variant/15">
+                  Confidence rationale: {result.confidence_explanation}
+                </p>
+              )}
             </div>
 
             {/* Root Cause Explanation Card */}
             <div className="p-space-md rounded-lg bg-surface-container-lowest border border-primary/20 flex flex-col gap-space-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="material-symbols-outlined text-primary text-[20px]">psychology</span>
                   <span className="font-title-sm font-semibold text-on-surface">
-                    Identified Initiating Service: {result.root_cause_analysis.service_name}
+                    {result.conclusion_status === 'INCONCLUSIVE' ? 'Primary Hypothesis (Unconfirmed)' : 'Identified Initiating Service'}: {result.root_cause_analysis.service_name}
                   </span>
+                  {result.suspected_operation && (
+                    <span className="px-2 py-0.5 rounded bg-surface-container text-primary font-mono-caption text-[11px] font-semibold">
+                      Op: {result.suspected_operation}
+                    </span>
+                  )}
                 </div>
                 <span className="px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed font-mono-badge text-[11px] font-semibold">
-                  PRIMARY INITIATOR
+                  {result.conclusion_status === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : 'AI HYPOTHESIS'}
                 </span>
               </div>
               <p className="font-body-default text-body-default text-on-surface-variant leading-relaxed">
@@ -473,6 +539,27 @@ export const AiInvestigationPage: React.FC = () => {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {((result.alternative_explanations?.length || 0) > 0 || (result.contradictory_evidence?.length || 0) > 0) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2 border-t border-outline-variant/20 text-xs">
+                  {(result.contradictory_evidence?.length || 0) > 0 && (
+                    <div className="p-2 rounded bg-error-container/25 border border-error/20 text-on-error-container">
+                      <div className="font-semibold font-mono-badge uppercase text-[10px] mb-1">Contradictory Evidence</div>
+                      {result.contradictory_evidence?.map((ce, idx) => (
+                        <div key={idx}>• {ce}</div>
+                      ))}
+                    </div>
+                  )}
+                  {(result.alternative_explanations?.length || 0) > 0 && (
+                    <div className="p-2 rounded bg-surface-container-low border border-outline-variant/20 text-secondary">
+                      <div className="font-semibold font-mono-badge uppercase text-[10px] mb-1">Plausible Alternatives</div>
+                      {result.alternative_explanations?.map((alt, idx) => (
+                        <div key={idx}>• {alt}</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -532,16 +619,31 @@ export const AiInvestigationPage: React.FC = () => {
               <div className="flex items-center gap-space-xs">
                 <span className="w-1.5 h-4 rounded-full bg-primary" />
                 <h3 className="font-title-md text-title-md text-on-surface font-semibold">
-                  Deterministic Multi-Factor Root-Cause Ranking
+                  Deterministic Multi-Signal Root-Cause Ranking
                 </h3>
               </div>
-              <span className="text-xs text-secondary font-mono-badge uppercase">
-                ALGORITHMIC GROUND TRUTH (PRE-LLM BASELINE)
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-secondary font-mono-badge uppercase">
+                  ALGORITHMIC GROUND TRUTH (PRE-LLM BASELINE)
+                </span>
+                <Button
+                  variant="surface"
+                  size="sm"
+                  icon={recalculating ? 'hourglass_top' : 'calculate'}
+                  disabled={recalculating || selectedCorrelation.status === 'RESOLVED'}
+                  onClick={handleRecalculateRca}
+                >
+                  {selectedCorrelation.status === 'RESOLVED'
+                    ? 'Resolved Snapshot Locked'
+                    : recalculating
+                    ? 'Recalculating...'
+                    : 'Recalculate Multi-Signal RCA'}
+                </Button>
+              </div>
             </div>
 
             <p className="text-xs text-secondary italic">
-              Candidates are deterministically scored across temporal precedence (35%), topological position (35%), blast radius (15%), and severity magnitude (15%). This ranking bounds LLM synthesis to prevent hallucinated causes.
+              Candidates are deterministically normalized across temporal precedence, dependency topology, blast radius, anomaly severity, persisted metric deviation, deduplicated error logs, and exclusive self-time trace bottlenecks. Unobserved telemetry never penalizes candidate scores.
             </p>
 
             <div className="flex flex-col gap-3">
@@ -555,7 +657,7 @@ export const AiInvestigationPage: React.FC = () => {
                   }`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className={`px-2 py-0.5 rounded font-mono-badge text-xs font-bold ${
                         cand.rank === 1 ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface'
                       }`}>
@@ -567,6 +669,11 @@ export const AiInvestigationPage: React.FC = () => {
                       <span className="text-xs text-secondary font-mono-caption">
                         ({cand.service_identifier})
                       </span>
+                      {cand.primary_suspected_operation && (
+                        <span className="px-2 py-0.5 rounded bg-surface-container text-primary font-mono-caption text-[11px] font-semibold">
+                          Op: {cand.primary_suspected_operation}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
@@ -592,47 +699,36 @@ export const AiInvestigationPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 4-Factor Breakdown Grid */}
+                  {/* Multi-Factor Breakdown Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-2 pt-1 border-t border-outline-variant/20">
-                    <div className="p-2 rounded bg-surface-container-lowest/80 text-xs">
-                      <div className="text-secondary font-medium">Temporal Precedence (35%)</div>
-                      <div className="font-semibold text-on-surface font-mono-caption">
-                        {(cand.breakdown.temporal_precedence.score * 100).toFixed(0)}%
+                    {[
+                      { label: 'Temporal Precedence', dim: cand.breakdown.temporal_precedence },
+                      { label: 'Topological Position', dim: cand.breakdown.topological_position },
+                      { label: 'Blast Radius', dim: cand.breakdown.blast_radius },
+                      { label: 'Severity & Dev', dim: cand.breakdown.severity_magnitude },
+                      ...(cand.breakdown.metric_deviation ? [{ label: 'Metric Deviation', dim: cand.breakdown.metric_deviation }] : []),
+                      ...(cand.breakdown.log_evidence ? [{ label: 'Log Evidence', dim: cand.breakdown.log_evidence }] : []),
+                      ...(cand.breakdown.trace_bottleneck ? [{ label: 'Trace Bottleneck', dim: cand.breakdown.trace_bottleneck }] : []),
+                    ].map(({ label, dim }) => (
+                      <div key={label} className="p-2 rounded bg-surface-container-lowest/80 text-xs">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-secondary font-medium">
+                            {label} ({(dim.weight * 100).toFixed(0)}%)
+                          </span>
+                          {dim.available === false && (
+                            <span className="px-1 rounded bg-surface-container text-[10px] text-outline font-mono-badge">
+                              UNOBSERVED
+                            </span>
+                          )}
+                        </div>
+                        <div className="font-semibold text-on-surface font-mono-caption">
+                          {dim.available === false ? 'N/A' : `${(dim.score * 100).toFixed(0)}%`}
+                        </div>
+                        <div className="text-[11px] text-secondary mt-0.5 leading-tight">
+                          {dim.reason}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-secondary mt-0.5 leading-tight">
-                        {cand.breakdown.temporal_precedence.reason}
-                      </div>
-                    </div>
-
-                    <div className="p-2 rounded bg-surface-container-lowest/80 text-xs">
-                      <div className="text-secondary font-medium">Topological Position (35%)</div>
-                      <div className="font-semibold text-on-surface font-mono-caption">
-                        {(cand.breakdown.topological_position.score * 100).toFixed(0)}%
-                      </div>
-                      <div className="text-[11px] text-secondary mt-0.5 leading-tight">
-                        {cand.breakdown.topological_position.reason}
-                      </div>
-                    </div>
-
-                    <div className="p-2 rounded bg-surface-container-lowest/80 text-xs">
-                      <div className="text-secondary font-medium">Blast Radius (15%)</div>
-                      <div className="font-semibold text-on-surface font-mono-caption">
-                        {(cand.breakdown.blast_radius.score * 100).toFixed(0)}%
-                      </div>
-                      <div className="text-[11px] text-secondary mt-0.5 leading-tight">
-                        {cand.breakdown.blast_radius.reason}
-                      </div>
-                    </div>
-
-                    <div className="p-2 rounded bg-surface-container-lowest/80 text-xs">
-                      <div className="text-secondary font-medium">Severity & Dev (15%)</div>
-                      <div className="font-semibold text-on-surface font-mono-caption">
-                        {(cand.breakdown.severity_magnitude.score * 100).toFixed(0)}%
-                      </div>
-                      <div className="text-[11px] text-secondary mt-0.5 leading-tight">
-                        {cand.breakdown.severity_magnitude.reason}
-                      </div>
-                    </div>
+                    ))}
                   </div>
 
                   {/* Supporting Evidence Bullets */}
@@ -649,15 +745,115 @@ export const AiInvestigationPage: React.FC = () => {
                     </div>
                   )}
 
+                  {/* Contradictory & Missing Signal Notices */}
+                  {cand.contradictory_evidence && cand.contradictory_evidence.length > 0 && (
+                    <div className="p-2 rounded bg-error-container/30 border border-error/20 flex flex-col gap-1 text-xs text-on-error-container">
+                      {cand.contradictory_evidence.map((cMsg, i) => (
+                        <div key={i} className="flex items-start gap-1.5">
+                          <span className="material-symbols-outlined text-[14px] text-error shrink-0 mt-0.5">warning</span>
+                          <span>{cMsg}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {(cand.affected_downstream_services?.length || 0) > 0 && (
+                    <div className="text-[11px] text-secondary font-mono-caption">
+                      Affected downstream services: {cand.affected_downstream_services?.join(', ')}
+                    </div>
+                  )}
+
                   {/* Limitation Disclaimer */}
                   {cand.limitations.length > 0 && (
                     <div className="text-[11px] text-outline italic pt-0.5">
-                      {cand.limitations[0]}
+                      {cand.limitations.join(' ')}
                     </div>
                   )}
                 </div>
               ))}
             </div>
+
+            {/* Multi-Signal Telemetry Evidence Drawer */}
+            {selectedCorrelation.evidence_summary && (
+              <div className="mt-2 pt-4 border-t border-outline-variant/20 flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-title-sm font-semibold text-on-surface">
+                    Correlated Multi-Signal Telemetry Snapshot
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-mono-badge">
+                    {selectedCorrelation.evidence_summary.coverage.observed_signals.map((sig) => (
+                      <span key={sig} className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 uppercase">
+                        {sig}
+                      </span>
+                    ))}
+                    {selectedCorrelation.evidence_summary.coverage.missing_signals.map((sig) => (
+                      <span key={sig} className="px-2 py-0.5 rounded bg-surface-container text-outline uppercase">
+                        missing: {sig}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedCorrelation.evidence_summary.trace_bottlenecks.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold uppercase text-secondary font-mono-badge">
+                      Trace Self-Time Bottlenecks &amp; Origin Error Spans
+                    </span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {selectedCorrelation.evidence_summary.trace_bottlenecks.slice(0, 4).map((tb) => (
+                        <div key={`${tb.trace_id}-${tb.span_id}`} className="p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/20 flex items-center justify-between gap-2 text-xs">
+                          <div className="min-w-0">
+                            <div className="font-semibold text-on-surface truncate">
+                              {tb.service_name}: {tb.operation_name}
+                            </div>
+                            <div className="font-mono-caption text-secondary">
+                              self-time {tb.self_time_ms.toFixed(1)}ms ({(tb.self_time_share * 100).toFixed(0)}%) • total {tb.duration_ms.toFixed(1)}ms
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/traces?trace_id=${encodeURIComponent(tb.trace_id)}`)}
+                            className="text-primary font-mono-caption hover:underline shrink-0 cursor-pointer"
+                          >
+                            Trace
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {selectedCorrelation.evidence_summary.log_highlights.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold uppercase text-secondary font-mono-badge">
+                      Correlated Log Highlights
+                    </span>
+                    <div className="flex flex-col gap-1.5">
+                      {selectedCorrelation.evidence_summary.log_highlights.slice(0, 4).map((lg) => (
+                        <div key={lg.log_id} className="p-2 rounded bg-surface-container-low border border-outline-variant/20 flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`px-1.5 py-0.5 rounded font-mono-badge text-[10px] font-semibold ${lg.level === 'ERROR' || lg.level === 'CRITICAL' ? 'bg-error-container text-on-error-container' : 'bg-surface-container text-secondary'}`}>
+                              {lg.level}
+                            </span>
+                            <span className="font-semibold shrink-0">{lg.service_name}</span>
+                            <span className="text-secondary truncate">{lg.message}</span>
+                          </div>
+                          {lg.trace_id && (
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/logs?trace_id=${encodeURIComponent(lg.trace_id || '')}`)}
+                              className="text-primary font-mono-caption hover:underline shrink-0 cursor-pointer"
+                            >
+                              Logs
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -895,6 +1091,20 @@ export const AiInvestigationPage: React.FC = () => {
                     <span className="font-semibold font-mono-badge uppercase text-[10px]">Rollback Procedure: </span>
                     <span>{rec.rollback_procedure}</span>
                   </div>
+
+                  {rec.expected_result && (
+                    <div className="text-secondary">
+                      <span className="font-semibold font-mono-badge uppercase text-[10px]">Expected Outcome: </span>
+                      <span>{rec.expected_result}</span>
+                    </div>
+                  )}
+
+                  {rec.verification_steps && rec.verification_steps.length > 0 && (
+                    <div className="text-secondary">
+                      <span className="font-semibold font-mono-badge uppercase text-[10px]">Verification: </span>
+                      <span>{rec.verification_steps.join(' • ')}</span>
+                    </div>
+                  )}
 
                   <div className="mt-2 pt-2 border-t border-outline-variant/20 flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-secondary">

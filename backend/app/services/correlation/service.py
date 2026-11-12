@@ -1,23 +1,29 @@
 """Application service coordinating correlation evaluation, persistence, and querying."""
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional, Set
 from uuid import UUID
 from sqlalchemy.orm import Session
 
+from app.models.anomaly import AnomalyEvent
 from app.models.correlation import CorrelationGroup, RootCauseCandidate
+from app.models.service import Service
 from app.repositories.correlation_repository import CorrelationRepository
 from app.repositories.project_repository import ProjectRepository
+from app.repositories.service_dependency_repository import ServiceDependencyRepository
 from app.repositories.service_repository import ServiceRepository
 from app.schemas.correlation import (
     CorrelationEvaluationRequest,
     CorrelationEvaluationResponse,
     CorrelationGroupResponse,
     CorrelatedEventSummary,
+    MultiSignalEvidenceSummary,
     RootCauseCandidateResponse,
 )
 from app.services.correlation.engine import CorrelationEngine
+from app.services.correlation.ranker import RootCauseRanker
 from app.services.incident_service import IncidentService
+from app.services.intelligence.evidence_retriever import MultiSignalEvidenceRetriever
 
 
 class ProjectNotFoundError(Exception):
@@ -30,6 +36,16 @@ class CorrelationGroupNotFoundError(Exception):
     pass
 
 
+class CorrelationGroupImmutableError(Exception):
+    """Raised when attempting to recalculate a RESOLVED/historical correlation group."""
+    pass
+
+
+class CorrelationProjectIsolationError(Exception):
+    """Raised when accessing a correlation group outside its project scope."""
+    pass
+
+
 class CorrelationService:
     """Application service managing cross-service anomaly correlation and causal candidate ranking."""
 
@@ -37,8 +53,10 @@ class CorrelationService:
         self.db = db
         self.project_repo = ProjectRepository(db)
         self.service_repo = ServiceRepository(db)
+        self.dependency_repo = ServiceDependencyRepository(db)
         self.correlation_repo = CorrelationRepository(db)
         self.engine = CorrelationEngine(db)
+        self.evidence_retriever = MultiSignalEvidenceRetriever(db)
         self.incident_service = IncidentService(db)
 
     def evaluate_and_persist(
@@ -135,6 +153,149 @@ class CorrelationService:
         group = self.get_group(correlation_id)
         return group.ranked_candidates
 
+    def get_group_evidence(
+        self,
+        correlation_id: UUID,
+        expected_project_id: Optional[UUID] = None,
+    ) -> MultiSignalEvidenceSummary:
+        """Retrieve persisted multi-signal evidence for a correlation group (or build lazily read-only)."""
+        row = self.correlation_repo.get_by_id(correlation_id)
+        if not row:
+            raise CorrelationGroupNotFoundError(f"Correlation group '{correlation_id}' was not found.")
+        if expected_project_id and row.project_id != expected_project_id:
+            raise CorrelationProjectIsolationError(
+                f"Correlation group '{correlation_id}' does not belong to project '{expected_project_id}'."
+            )
+
+        if row.multi_signal_evidence_json:
+            ev = MultiSignalEvidenceSummary(**row.multi_signal_evidence_json)
+            if ev.correlation_group_id is None:
+                ev.correlation_group_id = row.id
+            return ev
+
+        # Lazy read-only computation from persisted telemetry (for pre-Phase-2 correlation groups)
+        cluster_events: List[AnomalyEvent] = [
+            assoc.anomaly_event for assoc in row.event_associations if assoc.anomaly_event is not None
+        ]
+        services_list = self.service_repo.get_by_project(row.project_id)
+        all_services_map: Dict[UUID, Service] = {s.id: s for s in services_list}
+        cluster_sids = {e.service_id for e in cluster_events}
+        cluster_services = {sid: all_services_map[sid] for sid in cluster_sids if sid in all_services_map}
+        deps = self.dependency_repo.list_by_project(row.project_id)
+        downstream_map: Dict[UUID, Set[UUID]] = {s.id: set() for s in services_list}
+        for dep in deps:
+            if dep.source_service_id in downstream_map and dep.target_service_id in downstream_map:
+                downstream_map[dep.target_service_id].add(dep.source_service_id)
+
+        bundle = self.evidence_retriever.retrieve(
+            project_id=row.project_id,
+            window_start=row.time_window_start,
+            window_end=row.time_window_end,
+            services_map=cluster_services,
+            anomaly_events=cluster_events,
+            downstream_map=downstream_map,
+            correlation_group_id=row.id,
+            topology_complete=row.topology_complete,
+            all_services_map=all_services_map,
+        )
+        return bundle.summary
+
+    def recalculate_group(
+        self,
+        correlation_id: UUID,
+        expected_project_id: Optional[UUID] = None,
+    ) -> CorrelationGroupResponse:
+        """Deterministically recompute multi-signal evidence and root-cause ranking for an active group."""
+        row = self.correlation_repo.get_by_id(correlation_id)
+        if not row:
+            raise CorrelationGroupNotFoundError(f"Correlation group '{correlation_id}' was not found.")
+        if expected_project_id and row.project_id != expected_project_id:
+            raise CorrelationProjectIsolationError(
+                f"Correlation group '{correlation_id}' does not belong to project '{expected_project_id}'."
+            )
+        if (row.status or "").upper() == "RESOLVED":
+            raise CorrelationGroupImmutableError(
+                f"Correlation group '{correlation_id}' is RESOLVED; historical evidence snapshots are immutable."
+            )
+
+        linked_incident = self.incident_service.incident_repo.get_by_correlation_group_id(row.id)
+        if linked_incident and (linked_incident.status or "").upper() == "RESOLVED":
+            raise CorrelationGroupImmutableError(
+                f"Linked incident '{linked_incident.incident_number}' is RESOLVED; correlation snapshot is immutable."
+            )
+
+        cluster_events: List[AnomalyEvent] = [
+            assoc.anomaly_event for assoc in row.event_associations if assoc.anomaly_event is not None
+        ]
+        services_list = self.service_repo.get_by_project(row.project_id)
+        all_services_map: Dict[UUID, Service] = {s.id: s for s in services_list}
+        cluster_sids = {e.service_id for e in cluster_events}
+        cluster_services = {sid: all_services_map[sid] for sid in cluster_sids if sid in all_services_map}
+        events_by_svc: Dict[UUID, List[AnomalyEvent]] = {}
+        for ev in cluster_events:
+            events_by_svc.setdefault(ev.service_id, []).append(ev)
+
+        deps = self.dependency_repo.list_by_project(row.project_id)
+        upstream_map: Dict[UUID, Set[UUID]] = {s.id: set() for s in services_list}
+        downstream_map: Dict[UUID, Set[UUID]] = {s.id: set() for s in services_list}
+        for dep in deps:
+            if dep.source_service_id in upstream_map and dep.target_service_id in upstream_map:
+                upstream_map[dep.source_service_id].add(dep.target_service_id)
+                downstream_map[dep.target_service_id].add(dep.source_service_id)
+
+        topo_complete = len(deps) > 0
+        bundle = self.evidence_retriever.retrieve(
+            project_id=row.project_id,
+            window_start=row.time_window_start,
+            window_end=row.time_window_end,
+            services_map=cluster_services,
+            anomaly_events=cluster_events,
+            downstream_map=downstream_map,
+            correlation_group_id=row.id,
+            topology_complete=topo_complete,
+            all_services_map=all_services_map,
+        )
+
+        ranked_candidates = RootCauseRanker.rank_candidates(
+            participating_services=cluster_services,
+            events_by_service=events_by_svc,
+            upstream_map=upstream_map,
+            downstream_map=downstream_map,
+            topology_edges_exist=topo_complete,
+            multi_signal_bundle=bundle,
+        )
+        top_cand = ranked_candidates[0] if ranked_candidates else None
+        group_conf = top_cand.score if top_cand else 0.5
+        if not topo_complete and not (
+            bundle.has_any_telemetry and top_cand and top_cand.breakdown.trace_bottleneck and top_cand.breakdown.trace_bottleneck.score >= 0.75
+        ):
+            group_conf = round(group_conf * 0.70, 4)
+
+        summary_text = (
+            f"Correlated {len(cluster_events)} anomalies across {len(cluster_services)} services. "
+            f"Probable root-cause candidate: {top_cand.service_name if top_cand else 'None'} "
+            f"(score: {top_cand.score:.2f}, confidence: {top_cand.confidence.value if top_cand else 'N/A'})."
+        )
+
+        try:
+            updated_row = self.correlation_repo.replace_analysis_snapshot(
+                group_row=row,
+                ranked_candidates=ranked_candidates,
+                evidence_summary_json=bundle.summary.model_dump(mode="json"),
+                summary_text=summary_text,
+                confidence_score=group_conf,
+                topology_complete=topo_complete,
+                commit=False,
+            )
+            self.incident_service.refresh_incident_from_correlation(updated_row, commit=False)
+            self.db.commit()
+            self.db.refresh(updated_row)
+        except Exception:
+            self.db.rollback()
+            raise
+
+        return self._to_group_response(updated_row)
+
     def _to_group_response(self, row: CorrelationGroup) -> CorrelationGroupResponse:
         """Convert SQLAlchemy CorrelationGroup model to Pydantic CorrelationGroupResponse."""
         participating_events: List[CorrelatedEventSummary] = []
@@ -212,6 +373,26 @@ class CorrelationService:
                     )
                 )
 
+        ev_summary: Optional[MultiSignalEvidenceSummary] = None
+        if row.multi_signal_evidence_json:
+            try:
+                ev_summary = MultiSignalEvidenceSummary(**row.multi_signal_evidence_json)
+                if ev_summary.correlation_group_id is None:
+                    ev_summary.correlation_group_id = row.id
+            except Exception:
+                ev_summary = None
+
+        top_cand = ranked_candidates[0] if ranked_candidates else None
+        primary_op = (
+            (top_cand.primary_suspected_operation if top_cand and top_cand.primary_suspected_operation else None)
+            or (ev_summary.primary_suspected_operation if ev_summary else None)
+        )
+        uncertainty_summary = (
+            "; ".join(ev_summary.uncertainty_notes)
+            if ev_summary and ev_summary.uncertainty_notes
+            else None
+        )
+
         return CorrelationGroupResponse(
             id=row.id,
             project_id=row.project_id,
@@ -225,6 +406,9 @@ class CorrelationService:
             events_count=len(participating_events),
             participating_events=participating_events,
             ranked_candidates=ranked_candidates,
+            evidence_summary=ev_summary,
+            primary_suspected_operation=primary_op,
+            uncertainty_summary=uncertainty_summary,
             created_at=row.created_at,
         )
 

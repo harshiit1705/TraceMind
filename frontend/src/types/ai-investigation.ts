@@ -58,13 +58,22 @@ export interface RemediationRecommendation {
   rollback_procedure: string;
   requires_human_approval: boolean;
   command_snippet?: string | null;
+  expected_result?: string | null;
+  verification_steps?: string[];
 }
 
 export interface InvestigationResult {
   incident_summary: string;
+  conclusion_status?: 'CONCLUSIVE' | 'CORRELATION_ONLY' | 'INCONCLUSIVE' | string;
+  confidence_level?: 'HIGH' | 'MEDIUM' | 'LOW' | string;
+  confidence_explanation?: string | null;
+  suspected_operation?: string | null;
   timeline: TimelineEvidenceEvent[];
   root_cause_analysis: RootCauseEvidenceExplanation;
+  alternative_explanations?: string[];
   evidence_references: EvidenceReference[];
+  contradictory_evidence?: string[];
+  neutral_evidence?: string[];
   uncertainties_and_gaps: UncertaintyGap[];
   prioritized_investigation_steps: InvestigationStep[];
   remediation_recommendations: RemediationRecommendation[];
@@ -80,6 +89,8 @@ export interface GroundedInvestigationResponse {
   schema_version: string;
   status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
   evidence_hash?: string | null;
+  evidence_stale?: boolean;
+  latest_evidence_hash?: string | null;
   result?: InvestigationResult | null;
   investigation_json?: InvestigationResult | null;
   prompt_tokens?: number;

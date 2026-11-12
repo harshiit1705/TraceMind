@@ -3,13 +3,23 @@ import { useParams, Link } from 'react-router-dom';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button, SeverityBadge, LoadingSpinner, ErrorState } from '../../components/common';
 import { apiClient } from '../../services/apiClient';
-import { IncidentItem, IncidentEvent, IncidentStatus, GroundedInvestigationResponse } from '../../types';
+import {
+  IncidentItem,
+  IncidentEvent,
+  IncidentStatus,
+  GroundedInvestigationResponse,
+  CorrelationGroup,
+  ApplicationLogItem,
+} from '../../types';
 
 export const IncidentDetailsPage: React.FC = () => {
   const { incidentId = 'INC-8492' } = useParams<{ incidentId: string }>();
   const [incident, setIncident] = useState<IncidentItem | null>(null);
   const [timelineEvents, setTimelineEvents] = useState<IncidentEvent[]>([]);
   const [investigation, setInvestigation] = useState<GroundedInvestigationResponse | null>(null);
+  const [correlationGroup, setCorrelationGroup] = useState<CorrelationGroup | null>(null);
+  const [incidentLogs, setIncidentLogs] = useState<ApplicationLogItem[]>([]);
+  const [evidenceTab, setEvidenceTab] = useState<'summary' | 'logs' | 'traces'>('summary');
   const [loadingInv, setLoadingInv] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,11 +35,17 @@ export const IncidentDetailsPage: React.FC = () => {
     }
   }, []);
 
-  const loadInvestigation = useCallback(async (correlationGroupId: string) => {
+  const loadInvestigation = useCallback(async (correlationGroupId: string, incId: string) => {
     setLoadingInv(true);
     try {
-      const res = await apiClient.getInvestigationByCorrelationGroup(correlationGroupId);
-      setInvestigation(res.data);
+      const [invRes, corrRes, logsRes] = await Promise.all([
+        apiClient.getInvestigationByCorrelationGroup(correlationGroupId),
+        apiClient.getCorrelationById(correlationGroupId).catch(() => null),
+        apiClient.getIncidentLogs(incId, 20).catch(() => null),
+      ]);
+      setInvestigation(invRes.data);
+      setCorrelationGroup(corrRes ? corrRes.data : null);
+      setIncidentLogs(logsRes ? logsRes.data : []);
     } catch {
       setInvestigation(null);
     } finally {
@@ -52,7 +68,7 @@ export const IncidentDetailsPage: React.FC = () => {
           loadTimeline(res.data.id);
           const corrId = res.data.correlationGroupId || res.data.correlation_group_id;
           if (corrId) {
-            loadInvestigation(corrId);
+            loadInvestigation(corrId, res.data.id);
           }
         }
       })
@@ -323,6 +339,154 @@ export const IncidentDetailsPage: React.FC = () => {
           )}
         </div>
 
+        {/* Multi-Signal Deterministic Root Cause & Evidence Card */}
+        {corrId && correlationGroup && correlationGroup.ranked_candidates.length > 0 && (
+          <div className="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm border border-outline-variant/30 flex flex-col gap-space-md">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-[22px]">hub</span>
+                <span className="font-title-md text-title-md text-on-surface font-semibold">
+                  Deterministic Multi-Signal Root Cause &amp; Evidence
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {(['summary', 'logs', 'traces'] as const).map((tabKey) => (
+                  <button
+                    key={tabKey}
+                    type="button"
+                    onClick={() => setEvidenceTab(tabKey)}
+                    className={`px-2.5 py-1 rounded-lg font-mono-badge text-mono-badge uppercase font-semibold transition-colors ${
+                      evidenceTab === tabKey
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
+                    }`}
+                  >
+                    {tabKey === 'summary' ? 'Root Cause & Signals' : tabKey === 'logs' ? `Logs (${incidentLogs.length})` : `Traces (${correlationGroup.evidence_summary?.trace_bottlenecks.length || 0})`}
+                  </button>
+                ))}
+                <Link to="/dependencies">
+                  <Button variant="surface" size="sm" icon="device_hub">Dependency Map</Button>
+                </Link>
+              </div>
+            </div>
+
+            {evidenceTab === 'summary' && (() => {
+              const topCand = correlationGroup.ranked_candidates[0];
+              const evSum = correlationGroup.evidence_summary;
+              return (
+                <div className="flex flex-col gap-space-sm">
+                  <div className="p-space-md rounded-lg bg-primary-fixed/15 border border-primary/25 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-caption-ui text-caption-ui uppercase text-outline font-semibold">
+                        #1 Probable Root Cause Service
+                      </span>
+                      <span className="font-title-sm font-semibold text-on-surface">
+                        {topCand.service_name} ({topCand.service_slug})
+                      </span>
+                      {(topCand.primary_suspected_operation || correlationGroup.primary_suspected_operation) && (
+                        <span className="font-mono-caption text-mono-caption text-primary">
+                          Suspected Operation: {topCand.primary_suspected_operation || correlationGroup.primary_suspected_operation}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-surface-container text-on-surface font-semibold">
+                        Score: {(topCand.score * 100).toFixed(1)}%
+                      </span>
+                      <span className="font-mono-badge text-mono-badge px-2 py-0.5 rounded bg-secondary-container text-on-secondary-fixed font-semibold">
+                        {topCand.confidence} CONFIDENCE
+                      </span>
+                    </div>
+                  </div>
+
+                  {evSum && (
+                    <div className="flex items-center gap-2 flex-wrap text-xs">
+                      <span className="font-mono-caption text-outline uppercase font-semibold">Signals:</span>
+                      {evSum.coverage.observed_signals.map((sig) => (
+                        <span key={sig} className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 font-mono-badge">
+                          {sig}
+                        </span>
+                      ))}
+                      {evSum.coverage.missing_signals.map((sig) => (
+                        <span key={sig} className="px-2 py-0.5 rounded bg-surface-container text-outline font-mono-badge">
+                          missing: {sig}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {topCand.supporting_evidence.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {topCand.supporting_evidence.slice(0, 4).map((ev, i) => (
+                        <div key={i} className="p-2 rounded bg-surface-container-low border border-outline-variant/20 text-xs text-on-surface-variant">
+                          {ev}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {topCand.contradictory_evidence && topCand.contradictory_evidence.length > 0 && (
+                    <div className="p-2.5 rounded bg-error-container/30 border border-error/25 text-xs text-on-error-container">
+                      <strong>Contradictory Evidence:</strong> {topCand.contradictory_evidence.join(' • ')}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {evidenceTab === 'logs' && (
+              <div className="flex flex-col gap-2">
+                {incidentLogs.length > 0 ? (
+                  incidentLogs.slice(0, 10).map((lg) => (
+                    <div key={lg.id} className="p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`px-1.5 py-0.5 rounded font-mono-badge font-semibold ${lg.level === 'ERROR' || lg.level === 'CRITICAL' ? 'bg-error-container text-on-error-container' : 'bg-surface-container text-on-surface-variant'}`}>
+                          {lg.level}
+                        </span>
+                        <span className="font-mono-caption font-semibold text-on-surface">{lg.service_name || lg.service_slug}</span>
+                        <span className="text-on-surface-variant truncate">{lg.message}</span>
+                      </div>
+                      {lg.trace_id && (
+                        <Link to={`/logs?trace_id=${encodeURIComponent(lg.trace_id)}`} className="font-mono-caption text-primary hover:underline shrink-0">
+                          Trace {lg.trace_id.slice(0, 10)}
+                        </Link>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-xs text-outline py-2">No persisted logs recorded in incident window.</div>
+                )}
+              </div>
+            )}
+
+            {evidenceTab === 'traces' && (
+              <div className="flex flex-col gap-2">
+                {(correlationGroup.evidence_summary?.trace_bottlenecks || []).length > 0 ? (
+                  (correlationGroup.evidence_summary?.trace_bottlenecks || []).slice(0, 10).map((tb) => (
+                    <div key={`${tb.trace_id}-${tb.span_id}`} className="p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-1.5 py-0.5 rounded font-mono-badge font-semibold ${tb.is_origin_error ? 'bg-error-container text-on-error-container' : 'bg-primary-fixed text-on-primary-fixed'}`}>
+                          {tb.is_origin_error ? 'ORIGIN ERROR' : 'BOTTLENECK'}
+                        </span>
+                        <span className="font-semibold text-on-surface">{tb.service_name}</span>
+                        <span className="font-mono-caption text-on-surface-variant">{tb.operation_name}</span>
+                      </div>
+                      <div className="flex items-center gap-3 font-mono-caption">
+                        <span>self-time: {tb.self_time_ms.toFixed(1)}ms ({(tb.self_time_share * 100).toFixed(0)}%)</span>
+                        <Link to={`/traces?trace_id=${encodeURIComponent(tb.trace_id)}`} className="text-primary hover:underline">
+                          Open Waterfall
+                        </Link>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-xs text-outline py-2">No persisted bottleneck trace spans in incident window.</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Linked Correlation & AI Investigation Section */}
         <div className="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm border border-outline-variant/30 flex flex-col gap-space-md">
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -374,6 +538,23 @@ export const IncidentDetailsPage: React.FC = () => {
                   const invResult = investigation.result || investigation.investigation_json;
                   return (
                     <>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {invResult?.conclusion_status && (
+                          <span className="font-mono-badge text-[10px] px-2 py-0.5 rounded bg-surface-container text-on-surface font-semibold uppercase">
+                            {invResult.conclusion_status}
+                          </span>
+                        )}
+                        {invResult?.confidence_level && (
+                          <span className="font-mono-badge text-[10px] px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed font-semibold uppercase">
+                            AI CONFIDENCE: {invResult.confidence_level}
+                          </span>
+                        )}
+                        {investigation.evidence_stale && (
+                          <span className="font-mono-badge text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200 font-semibold uppercase">
+                            EVIDENCE UPDATED
+                          </span>
+                        )}
+                      </div>
                       <p className="font-body-default text-body-default text-on-surface mt-1 leading-relaxed">
                         {invResult?.incident_summary}
                       </p>

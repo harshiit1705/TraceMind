@@ -24,6 +24,9 @@ ALLOWED_SOURCE_RECORD_TYPES = {
     "root_cause_candidate",
     "correlation_group",
     "baseline",
+    "metric_summary",
+    "application_log",
+    "trace_span",
 }
 
 ALLOWED_FIELDS_BY_SOURCE_TYPE: Dict[str, Set[str]] = {
@@ -56,8 +59,13 @@ ALLOWED_FIELDS_BY_SOURCE_TYPE: Dict[str, Set[str]] = {
         "topological_score",
         "blast_radius_score",
         "severity_score",
+        "metric_deviation_score",
+        "log_evidence_score",
+        "trace_bottleneck_score",
+        "primary_suspected_operation",
         "reasons",
         "supporting_evidence",
+        "contradictory_evidence",
         "limitations",
     },
     "correlation_group": {
@@ -66,6 +74,7 @@ ALLOWED_FIELDS_BY_SOURCE_TYPE: Dict[str, Set[str]] = {
         "time_window_end",
         "topology_complete",
         "topology_status_explanation",
+        "primary_suspected_operation",
     },
     "baseline": {
         "baseline_mean",
@@ -74,7 +83,43 @@ ALLOWED_FIELDS_BY_SOURCE_TYPE: Dict[str, Set[str]] = {
         "detection_method",
         "sample_count",
     },
+    "metric_summary": {
+        "metric_name",
+        "mean_value",
+        "max_value",
+        "min_value",
+        "p95_value",
+        "baseline_mean",
+        "deviation_pct",
+        "sample_count",
+        "status",
+    },
+    "application_log": {
+        "level",
+        "message",
+        "trace_id",
+        "request_id",
+        "exception_type",
+        "pattern_category",
+        "timestamp",
+    },
+    "trace_span": {
+        "operation_name",
+        "duration_ms",
+        "self_time_ms",
+        "self_time_share",
+        "status",
+        "http_status_code",
+        "error_message",
+        "is_origin_error",
+        "is_bottleneck",
+        "trace_id",
+        "span_id",
+    },
 }
+
+ALLOWED_CONCLUSION_STATUSES = {"CONCLUSIVE", "CORRELATION_ONLY", "INCONCLUSIVE"}
+ALLOWED_CONFIDENCE_LEVELS = {"HIGH", "MEDIUM", "LOW"}
 
 
 def _normalize_datetime(dt: datetime) -> datetime:
@@ -181,10 +226,34 @@ def validate_investigation_result_against_evidence(
                 "Executable snippets are strictly prohibited."
             )
 
+    if result.conclusion_status.upper() not in ALLOWED_CONCLUSION_STATUSES:
+        raise GroundingValidationError(
+            f"Grounding violation: Unsupported conclusion_status '{result.conclusion_status}'. "
+            f"Allowed: {sorted(ALLOWED_CONCLUSION_STATUSES)}."
+        )
+    if result.confidence_level.upper() not in ALLOWED_CONFIDENCE_LEVELS:
+        raise GroundingValidationError(
+            f"Grounding violation: Unsupported confidence_level '{result.confidence_level}'. "
+            f"Allowed: {sorted(ALLOWED_CONFIDENCE_LEVELS)}."
+        )
+
     # 4. Evidence reference source and field validation
-    dep_service_ids = {d.source_service_id for d in evidence.service_dependencies} | {
-        d.target_service_id for d in evidence.service_dependencies
+    dep_service_ids = {str(d.source_service_id) for d in evidence.service_dependencies} | {
+        str(d.target_service_id) for d in evidence.service_dependencies
     }
+    event_id_strs = {str(k) for k in event_map.keys()}
+    candidate_id_strs = {str(k) for k in candidate_map.keys()}
+    metric_source_ids = {
+        str(m.service_id) for m in evidence.metric_evidence
+    } | {
+        f"{m.service_id}:{m.metric_name}" for m in evidence.metric_evidence
+    }
+    log_source_ids = {str(lg.log_id) for lg in evidence.log_evidence}
+    span_source_ids = (
+        {tb.span_id for tb in evidence.trace_bottlenecks}
+        | {tb.trace_id for tb in evidence.trace_bottlenecks}
+        | {f"{tb.trace_id}:{tb.span_id}" for tb in evidence.trace_bottlenecks}
+    )
 
     for ref in result.evidence_references:
         # Validate source_record_type
@@ -194,31 +263,48 @@ def validate_investigation_result_against_evidence(
                 f"Supported types are: {sorted(ALLOWED_SOURCE_RECORD_TYPES)}."
             )
 
+        sid_str = str(ref.source_id)
+
         # Validate source_id against the correct evidence collection
         if ref.source_record_type == "anomaly_event":
-            if ref.source_id not in event_map:
+            if sid_str not in event_id_strs:
                 raise GroundingValidationError(
                     f"Grounding violation: Anomaly event citation references nonexistent source ID '{ref.source_id}'."
                 )
         elif ref.source_record_type == "root_cause_candidate":
-            if ref.source_id not in candidate_map:
+            if sid_str not in candidate_id_strs:
                 raise GroundingValidationError(
                     f"Grounding violation: Candidate citation references nonexistent source ID '{ref.source_id}'."
                 )
         elif ref.source_record_type == "service_dependency":
-            if ref.source_id not in dep_service_ids and ref.source_id not in event_map:
+            if sid_str not in dep_service_ids and sid_str not in event_id_strs:
                 raise GroundingValidationError(
                     f"Grounding violation: Service dependency citation references nonexistent service ID '{ref.source_id}'."
                 )
         elif ref.source_record_type == "correlation_group":
-            if ref.source_id != evidence.correlation_group_id:
+            if sid_str != str(evidence.correlation_group_id):
                 raise GroundingValidationError(
                     f"Grounding violation: Correlation group citation references foreign ID '{ref.source_id}'."
                 )
         elif ref.source_record_type == "baseline":
-            if ref.source_id not in event_map and ref.source_id not in dep_service_ids:
+            if sid_str not in event_id_strs and sid_str not in dep_service_ids:
                 raise GroundingValidationError(
                     f"Grounding violation: Baseline citation references nonexistent ID '{ref.source_id}'."
+                )
+        elif ref.source_record_type == "metric_summary":
+            if sid_str not in metric_source_ids:
+                raise GroundingValidationError(
+                    f"Grounding violation: Metric summary citation references nonexistent source ID '{ref.source_id}'."
+                )
+        elif ref.source_record_type == "application_log":
+            if sid_str not in log_source_ids:
+                raise GroundingValidationError(
+                    f"Grounding violation: Application log citation references nonexistent log ID '{ref.source_id}'."
+                )
+        elif ref.source_record_type == "trace_span":
+            if sid_str not in span_source_ids:
+                raise GroundingValidationError(
+                    f"Grounding violation: Trace span citation references nonexistent span/trace ID '{ref.source_id}'."
                 )
 
         # Validate supported_field against allowed fields on that source record type

@@ -61,6 +61,10 @@ class CorrelationGroup(Base, UUIDMixin, TimestampMixin):
         default=True,
         nullable=False,
     )  # False if one or more services in group lacked registered dependency graph edges
+    multi_signal_evidence_json = Column(
+        JSONBCompat,
+        nullable=True,
+    )  # Canonical bounded snapshot of correlated metrics, logs, traces, timeline, and coverage
 
     # Relationships
     project = relationship("Project")

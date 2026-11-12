@@ -18,6 +18,7 @@ import {
   TelemetryOverviewData,
   ServiceTopologyData,
   CorrelationGroup,
+  MultiSignalEvidenceSummary,
   RootCauseCandidate,
   ProjectItem,
 } from '../types';
@@ -284,10 +285,27 @@ class ApiClient {
       };
     }
 
-    const [graphRes, servicesRes] = await Promise.all([
+    const [graphRes, servicesRes, corrRes] = await Promise.all([
       this.request<any>(`/api/v1/dependencies/graph?project_id=${encodeURIComponent(targetProjectId)}`, null),
       this.request<any[]>(`/api/v1/services?project_id=${encodeURIComponent(targetProjectId)}`, []),
+      this.request<CorrelationGroup[]>(
+        `/api/v1/correlations?project_id=${encodeURIComponent(targetProjectId)}&status=ACTIVE&limit=10`,
+        []
+      ).catch(() => ({ data: [] as CorrelationGroup[], source: 'api' as const, timestamp: new Date().toISOString() })),
     ]);
+
+    const probableRootSlugs = new Set<string>();
+    const activeCascadeServices = new Set<string>();
+    for (const grp of corrRes.data || []) {
+      for (const c of grp.ranked_candidates || []) {
+        if (c.is_probable_root_cause && c.service_slug) {
+          probableRootSlugs.add(c.service_slug);
+        }
+        if (c.service_slug) {
+          activeCascadeServices.add(c.service_slug);
+        }
+      }
+    }
 
     const svcById = new Map<string, any>();
     for (const s of servicesRes.data || []) {
@@ -318,8 +336,8 @@ class ApiClient {
         latencyMs: lat,
         errorRatePercent: err,
         throughputStr: `${rps.toFixed(1)} req/s`,
-        isAnomalous: status === 'degraded' || status === 'unhealthy',
-        isRootCause: status === 'unhealthy',
+        isAnomalous: status === 'degraded' || status === 'unhealthy' || activeCascadeServices.has(n.slug || ''),
+        isRootCause: probableRootSlugs.has(n.slug || '') || (probableRootSlugs.size === 0 && status === 'unhealthy'),
         cpuSaturationPercent: meta.cpu_saturation_percent,
       };
     });
@@ -655,6 +673,51 @@ class ApiClient {
     return this.request<RootCauseCandidate[]>(
       `/api/v1/correlations/${correlationId}/candidates`,
       MOCK_CORRELATION_GROUP.ranked_candidates
+    );
+  }
+
+  public async getCorrelationEvidence(correlationId: string): Promise<ApiResponse<MultiSignalEvidenceSummary | null>> {
+    return this.request<MultiSignalEvidenceSummary | null>(
+      `/api/v1/correlations/${correlationId}/evidence`,
+      null
+    );
+  }
+
+  public async recalculateCorrelation(correlationId: string): Promise<ApiResponse<CorrelationGroup>> {
+    return this.request<CorrelationGroup>(
+      `/api/v1/correlations/${correlationId}/recalculate`,
+      MOCK_CORRELATION_GROUP,
+      { method: 'POST' }
+    );
+  }
+
+  public async getIncidentEvidence(incidentId: string): Promise<ApiResponse<{
+    incident_id: string;
+    incident_number: string;
+    total_count: number;
+    is_demo_scenario: boolean;
+    items: Array<{
+      id: string;
+      evidence_key?: string | null;
+      evidence_type: string;
+      service_identifier: string;
+      title: string;
+      observation: string;
+      confidence_weight: number;
+      timestamp: string;
+      payload: Record<string, unknown>;
+      is_demo: boolean;
+    }>;
+  }>> {
+    return this.request(
+      `/api/v1/incidents/${encodeURIComponent(incidentId)}/evidence`,
+      {
+        incident_id: incidentId,
+        incident_number: incidentId,
+        total_count: 0,
+        is_demo_scenario: true,
+        items: [],
+      }
     );
   }
 }

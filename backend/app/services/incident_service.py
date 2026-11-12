@@ -10,11 +10,15 @@ from app.models.correlation import CorrelationGroup
 from app.models.investigation import Investigation
 from app.models.finding import Finding
 from app.models.recommendation import Recommendation
+from app.models.service import Service
+from app.models.service_dependency import ServiceDependency
 from app.repositories.incident_repository import IncidentRepository
 from app.repositories.investigation_repository import InvestigationRepository
+from app.services.intelligence.evidence_retriever import MultiSignalEvidenceRetriever
 from app.services.project_service import ProjectService
 from app.services.demo.evidence_provider import get_evidence_provider
-from app.schemas.common import IncidentStatus
+from app.schemas.common import EvidenceType, IncidentStatus
+from app.schemas.correlation import MultiSignalEvidenceSummary
 from app.schemas.incident import (
     IncidentCreateRequest,
     IncidentDetailResponse,
@@ -309,17 +313,198 @@ class IncidentService:
         if not incident_detail:
             return None
 
-        items = self.evidence_provider.get_evidence_for_incident(
-            incident_id=incident_detail.id,
-            incident_number=incident_detail.incident_number
-        )
+        # Preserve historical Sprint 1-5 demo scenario payload (e.g., INC-8492)
+        if incident_detail.is_demo and not incident_detail.correlation_group_id:
+            items = self.evidence_provider.get_evidence_for_incident(
+                incident_id=incident_detail.id,
+                incident_number=incident_detail.incident_number,
+            )
+            return EvidenceListResponse(
+                incident_id=incident_detail.id,
+                incident_number=incident_detail.incident_number,
+                total_count=len(items),
+                items=items,
+                is_demo_scenario=True,
+            )
+
+        items = self._build_multi_signal_evidence_items(incident_detail)
         return EvidenceListResponse(
             incident_id=incident_detail.id,
             incident_number=incident_detail.incident_number,
             total_count=len(items),
             items=items,
-            is_demo_scenario=True
+            is_demo_scenario=False,
         )
+
+    def _build_multi_signal_evidence_items(self, incident_detail: IncidentDetailResponse) -> List[EvidenceResponse]:
+        """Convert persisted multi-signal telemetry evidence into typed EvidenceResponse items."""
+        if not incident_detail.correlation_group_id:
+            return []
+
+        group = (
+            self.db.query(CorrelationGroup)
+            .filter(CorrelationGroup.id == incident_detail.correlation_group_id)
+            .first()
+        )
+        if not group:
+            return []
+
+        summary_obj: Optional[MultiSignalEvidenceSummary] = None
+        if group.multi_signal_evidence_json:
+            try:
+                summary_obj = MultiSignalEvidenceSummary(**group.multi_signal_evidence_json)
+            except Exception:
+                summary_obj = None
+
+        if summary_obj is None:
+            services_list = self.db.query(Service).filter(Service.project_id == group.project_id).all()
+            all_services_map = {s.id: s for s in services_list}
+            cluster_events = [a.anomaly_event for a in group.event_associations if a.anomaly_event is not None]
+            cluster_sids = {e.service_id for e in cluster_events}
+            cluster_services = {sid: all_services_map[sid] for sid in cluster_sids if sid in all_services_map}
+            deps = self.db.query(ServiceDependency).filter(ServiceDependency.project_id == group.project_id).all()
+            downstream_map: Dict[UUID, Set[UUID]] = {s.id: set() for s in services_list}
+            for dep in deps:
+                if dep.source_service_id in downstream_map and dep.target_service_id in downstream_map:
+                    downstream_map[dep.target_service_id].add(dep.source_service_id)
+            summary_obj = MultiSignalEvidenceRetriever(self.db).retrieve(
+                project_id=group.project_id,
+                window_start=group.time_window_start,
+                window_end=group.time_window_end,
+                services_map=cluster_services,
+                anomaly_events=cluster_events,
+                downstream_map=downstream_map,
+                correlation_group_id=group.id,
+                topology_complete=group.topology_complete,
+                all_services_map=all_services_map,
+            ).summary
+
+        items: List[EvidenceResponse] = []
+        created_ts = group.created_at or group.time_window_start
+
+        for ms in summary_obj.metric_summaries:
+            if not ms.is_anomalous:
+                continue
+            eid = uuid.uuid5(uuid.NAMESPACE_URL, f"ev-metric-{group.id}-{ms.service_id}-{ms.metric_name}")
+            items.append(
+                EvidenceResponse(
+                    id=eid,
+                    incident_id=incident_detail.id,
+                    evidence_key=f"ev-metric-{ms.service_slug}-{ms.metric_name}",
+                    evidence_type=EvidenceType.METRIC,
+                    service_identifier=f"svc:{ms.service_slug}",
+                    title=f"{ms.service_name} {ms.metric_name} anomaly (mean {ms.mean_value}{ms.metric_unit})",
+                    observation=(
+                        f"Metric '{ms.metric_name}' averaged {ms.mean_value}{ms.metric_unit} "
+                        f"(max {ms.max_value}{ms.metric_unit}, {ms.sample_count} samples"
+                        + (f", {ms.deviation_pct:+.1f}% vs baseline" if ms.deviation_pct is not None else "")
+                        + ")."
+                    ),
+                    confidence_weight=0.90,
+                    timestamp=ms.first_breach_at or group.time_window_start,
+                    payload=ms.model_dump(mode="json"),
+                    is_demo=False,
+                    created_at=created_ts,
+                )
+            )
+
+        for lg in summary_obj.log_highlights[:10]:
+            items.append(
+                EvidenceResponse(
+                    id=lg.log_id,
+                    incident_id=incident_detail.id,
+                    evidence_key=f"ev-log-{str(lg.log_id)[:8]}",
+                    evidence_type=EvidenceType.LOG,
+                    service_identifier=f"svc:{lg.service_slug}",
+                    title=f"{lg.level} log on {lg.service_name} ({lg.pattern_category or 'error'})",
+                    observation=lg.message,
+                    confidence_weight=0.88 if lg.level in ("ERROR", "CRITICAL") else 0.70,
+                    timestamp=lg.timestamp,
+                    payload=lg.model_dump(mode="json"),
+                    is_demo=False,
+                    created_at=created_ts,
+                )
+            )
+
+        for tb in summary_obj.trace_bottlenecks[:10]:
+            eid = uuid.uuid5(uuid.NAMESPACE_URL, f"ev-trace-{tb.trace_id}-{tb.span_id}")
+            items.append(
+                EvidenceResponse(
+                    id=eid,
+                    incident_id=incident_detail.id,
+                    evidence_key=f"ev-trace-{tb.span_id[:8]}",
+                    evidence_type=EvidenceType.TRACE,
+                    service_identifier=f"svc:{tb.service_slug}",
+                    title=f"{'Origin error' if tb.is_origin_error else 'Bottleneck'} span: {tb.operation_name}",
+                    observation=(
+                        f"Span '{tb.operation_name}' on {tb.service_name} consumed {tb.self_time_ms:.1f}ms exclusive self-time "
+                        f"({tb.self_time_share * 100:.0f}% of trace, total {tb.duration_ms:.1f}ms, status={tb.status})."
+                    ),
+                    confidence_weight=0.95 if (tb.is_origin_error or tb.is_bottleneck) else 0.75,
+                    timestamp=tb.start_time,
+                    payload=tb.model_dump(mode="json"),
+                    is_demo=False,
+                    created_at=created_ts,
+                )
+            )
+
+        if group.root_cause_candidates:
+            top_cand = group.root_cause_candidates[0]
+            svc_name = top_cand.service.name if top_cand.service else "Unknown Service"
+            svc_slug = top_cand.service.slug if top_cand.service else "unknown"
+            topo_id = uuid.uuid5(uuid.NAMESPACE_URL, f"ev-topo-{group.id}")
+            items.append(
+                EvidenceResponse(
+                    id=topo_id,
+                    incident_id=incident_detail.id,
+                    evidence_key=f"ev-topo-{str(group.id)[:8]}",
+                    evidence_type=EvidenceType.TOPOLOGY,
+                    service_identifier=f"svc:{svc_slug}",
+                    title=f"Root-cause & topology ranking: #{top_cand.rank} {svc_name}",
+                    observation=(
+                        f"Deterministic candidate score {top_cand.score:.2f} ({top_cand.confidence} confidence). "
+                        f"Topology complete={group.topology_complete}."
+                    ),
+                    confidence_weight=round(top_cand.score, 2),
+                    timestamp=group.time_window_start,
+                    payload={
+                        "top_candidate_service": svc_name,
+                        "score": top_cand.score,
+                        "confidence": top_cand.confidence,
+                        "topology_complete": group.topology_complete,
+                        "missing_signals": summary_obj.missing_signals,
+                    },
+                    is_demo=False,
+                    created_at=created_ts,
+                )
+            )
+
+        return items
+
+    def refresh_incident_from_correlation(
+        self,
+        correlation_group: CorrelationGroup,
+        commit: bool = False,
+    ) -> Optional[Incident]:
+        """Refresh linked non-resolved incident summary/root-cause after group recalculation."""
+        inc = self.incident_repo.get_by_correlation_group_id(correlation_group.id)
+        if not inc or (inc.status or "").upper() == IncidentStatus.RESOLVED.value:
+            return inc
+        if correlation_group.summary:
+            inc.summary = correlation_group.summary
+        if correlation_group.root_cause_candidates:
+            top_cand = correlation_group.root_cause_candidates[0]
+            cand_svc = top_cand.service.name if top_cand.service else None
+            if cand_svc:
+                inc.root_cause_summary = (
+                    f"Probable root cause: {cand_svc} (score: {top_cand.score:.2f}, confidence: {top_cand.confidence})"
+                )
+        if commit:
+            self.db.commit()
+            self.db.refresh(inc)
+        else:
+            self.db.flush()
+        return inc
 
     def get_investigation(self, investigation_id: UUID) -> Optional[InvestigationDetailResponse]:
         self.ensure_default_seed()
@@ -424,13 +609,17 @@ class IncidentService:
 
         services_list = sorted(list(affected_services))
 
-        # Title derivation from top root-cause candidate or services
+        # Title & root-cause summary derivation from top root-cause candidate or services
         title = "Correlated anomaly cascade"
+        root_cause_summary = None
         if correlation_group.root_cause_candidates:
             top_cand = correlation_group.root_cause_candidates[0]
             cand_svc = top_cand.service.name if top_cand.service else None
             if cand_svc:
                 title = f"Degradation cascade initiating from {cand_svc}"
+                root_cause_summary = (
+                    f"Probable root cause: {cand_svc} (score: {top_cand.score:.2f}, confidence: {top_cand.confidence})"
+                )
             elif services_list:
                 title = f"Correlated anomaly cascade across {', '.join(services_list[:3])}"
         elif services_list:
@@ -453,6 +642,7 @@ class IncidentService:
                 started_at=correlation_group.time_window_start,
                 commander_name="Unassigned",
                 commander_role="SRE",
+                root_cause_summary=root_cause_summary,
                 affected_services=services_list,
                 summary=correlation_group.summary,
                 is_demo=False,
