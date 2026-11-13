@@ -39,6 +39,8 @@ export interface IncidentItem {
   affectedServices: string[];
   correlationGroupId?: string | null;
   correlation_group_id?: string | null;
+  projectId?: string | null;
+  project_id?: string | null;
   isDemo?: boolean;
   is_demo?: boolean;
   summary?: string;

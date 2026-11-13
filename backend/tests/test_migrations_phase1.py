@@ -32,7 +32,8 @@ def test_fresh_sqlite_migration_0001_to_head_and_model_consistency(monkeypatch):
         cfg = Config("backend/alembic.ini")
         script = ScriptDirectory.from_config(cfg)
         assert len(script.get_heads()) == 1
-        assert script.get_heads()[0] == "0009_multi_signal_rca_support"
+        current_head = script.get_heads()[0]
+        assert current_head == "0011_remediation_hardening_and_recovery_verification"
 
         # 1. Upgrade fresh DB up to 0003 and seed pre-0004 data
         command.upgrade(cfg, "0003_service_dependencies_and_correlation")
@@ -79,7 +80,7 @@ def test_fresh_sqlite_migration_0001_to_head_and_model_consistency(monkeypatch):
         assert row[3] == "google-gemini"
 
         cur.execute("SELECT version_num FROM alembic_version")
-        assert cur.fetchone()[0] == "0009_multi_signal_rca_support"
+        assert cur.fetchone()[0] == current_head
         conn.close()
 
         # 4. Verify every SQLAlchemy model table and column matches migrated schema + ORM works
@@ -114,7 +115,7 @@ def test_fresh_sqlite_migration_0001_to_head_and_model_consistency(monkeypatch):
         conn = sqlite3.connect(db_path)
         cur = conn.cursor()
         cur.execute("SELECT version_num FROM alembic_version")
-        assert cur.fetchone()[0] == "0009_multi_signal_rca_support"
+        assert cur.fetchone()[0] == current_head
         conn.close()
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

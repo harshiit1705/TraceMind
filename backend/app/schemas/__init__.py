@@ -33,7 +33,16 @@ from app.schemas.recommendation import (
     RemediationExecuteRequest,
     RemediationCancelRequest,
     RemediationProposeRequest,
+    RemediationReconcileRequest,
     RemediationDetailResponse,
+)
+from app.schemas.recovery_verification import (
+    RecoveryOutcome,
+    VerificationStatus,
+    CheckStatus,
+    TelemetryCheckResult,
+    RecoveryVerificationRequest,
+    RecoveryVerificationResponse,
 )
 from app.schemas.investigation import (
     InvestigationResponse,

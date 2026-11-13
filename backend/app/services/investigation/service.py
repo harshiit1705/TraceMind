@@ -209,6 +209,8 @@ class InvestigationService:
 
                 rec_row = Recommendation(
                     investigation_id=investigation.id,
+                    incident_id=linked_incident.id if linked_incident else None,
+                    project_id=linked_incident.project_id if linked_incident else None,
                     title=ai_rec.title,
                     action_type=ai_rec.action_type.value,
                     action_name=action_name,

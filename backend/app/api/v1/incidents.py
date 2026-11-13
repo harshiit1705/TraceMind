@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from app.core.auth import AuthenticatedActor, authenticate_actor
 from app.db.session import get_db
 from app.models.incident import Incident
 from app.schemas.common import IncidentSeverity, IncidentStatus, PaginatedResponse
@@ -307,13 +308,14 @@ def get_incident_logs(
 )
 def list_incident_remediations(
     incident_id: str,
-    project_id: Optional[UUID] = Query(None, description="Optional project UUID for tenant isolation"),
+    project_id: UUID = Query(..., description="Mandatory project UUID for tenant isolation"),
+    actor: AuthenticatedActor = Depends(authenticate_actor),
     db: Session = Depends(get_db),
 ) -> List[RemediationDetailResponse]:
     from app.services.remediation.service import RemediationService
     service = RemediationService(db)
     try:
-        return service.list_remediations_for_incident(incident_id, project_id=project_id)
+        return service.list_remediations_for_incident(incident_id, project_id=project_id, actor=actor)
     except IncidentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ProjectIsolationError as exc:
@@ -329,13 +331,14 @@ def list_incident_remediations(
 def propose_incident_remediation(
     incident_id: str,
     payload: RemediationProposeRequest,
-    project_id: Optional[UUID] = Query(None, description="Optional project UUID for tenant isolation"),
+    project_id: UUID = Query(..., description="Mandatory project UUID for tenant isolation"),
+    actor: AuthenticatedActor = Depends(authenticate_actor),
     db: Session = Depends(get_db),
 ) -> RemediationDetailResponse:
     from app.services.remediation.service import RemediationService
     service = RemediationService(db)
     try:
-        return service.propose_remediation(incident_id, req=payload, project_id=project_id)
+        return service.propose_remediation(incident_id, req=payload, project_id=project_id, actor=actor)
     except IncidentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ProjectIsolationError as exc:

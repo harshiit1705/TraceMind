@@ -68,20 +68,33 @@ async def test_telemetry_payload_schema_compatibility_with_tracemind():
     import sys
     from pathlib import Path
     backend_path = Path(__file__).resolve().parent.parent.parent / "backend"
-    if str(backend_path) not in sys.path:
-        sys.path.insert(0, str(backend_path))
+    if str(backend_path) in sys.path:
+        sys.path.remove(str(backend_path))
+    sys.path.insert(0, str(backend_path))
 
+    import app.models  # noqa: F401
     from app.main import app
-    from app.db.session import SessionLocal
+    from app.db.base import Base
     from app.models.project import Project
+    from app.services.project_service import ProjectService
+    from app.db.session import get_db
+    from tests.conftest import TestingSessionLocal, test_engine
 
-    db = SessionLocal()
-    try:
-        project = db.query(Project).first()
-        assert project is not None, "Project seed required"
-        project_id = project.id
-    finally:
-        db.close()
+    Base.metadata.create_all(bind=test_engine)
+    db = TestingSessionLocal()
+    ProjectService(db).ensure_default_seed()
+    project = db.query(Project).filter_by(slug="core-ecommerce").first()
+    assert project is not None, "Project seed required"
+    project_id = project.id
+
+    def override_get_db():
+        session = TestingSessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = override_get_db
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver/api/v1") as test_client:
@@ -117,6 +130,8 @@ async def test_telemetry_payload_schema_compatibility_with_tracemind():
             timestamp=now + timedelta(seconds=2),
         )
         assert res3 is True
+    app.dependency_overrides.clear()
+    db.close()
 
 
 @pytest.mark.asyncio
@@ -125,20 +140,33 @@ async def test_telemetry_project_auto_discovery():
     import sys
     from pathlib import Path
     backend_path = Path(__file__).resolve().parent.parent.parent / "backend"
-    if str(backend_path) not in sys.path:
-        sys.path.insert(0, str(backend_path))
+    if str(backend_path) in sys.path:
+        sys.path.remove(str(backend_path))
+    sys.path.insert(0, str(backend_path))
 
+    import app.models  # noqa: F401
     from app.main import app
-    from app.db.session import SessionLocal
+    from app.db.base import Base
     from app.models.project import Project
+    from app.services.project_service import ProjectService
+    from app.db.session import get_db
+    from tests.conftest import TestingSessionLocal, test_engine
 
-    db = SessionLocal()
-    try:
-        project = db.query(Project).filter_by(slug="core-ecommerce").first()
-        assert project is not None
-        expected_project_id = project.id
-    finally:
-        db.close()
+    Base.metadata.create_all(bind=test_engine)
+    db = TestingSessionLocal()
+    ProjectService(db).ensure_default_seed()
+    project = db.query(Project).filter_by(slug="core-ecommerce").first()
+    assert project is not None
+    expected_project_id = project.id
+
+    def override_get_db():
+        session = TestingSessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = override_get_db
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver/api/v1") as test_client:
@@ -153,6 +181,8 @@ async def test_telemetry_project_auto_discovery():
         discovered_id = await telemetry.ensure_project_id()
         assert discovered_id == expected_project_id
         assert telemetry._resolved_project_id == expected_project_id
+    app.dependency_overrides.clear()
+    db.close()
 
 
 @pytest.mark.asyncio
@@ -319,8 +349,10 @@ async def test_telemetry_graceful_shutdown_drains_queued_measurements_before_sto
 async def test_telemetry_shutdown_timeout_discards_and_logs_remaining(caplog):
     """Verify stop() respects bounded timeout when backend hangs and logs discarded count."""
     hang_event = asyncio.Event()
+    entered_hang = asyncio.Event()
 
     async def hanging_handler(request: httpx.Request) -> httpx.Response:
+        entered_hang.set()
         await hang_event.wait()
         return httpx.Response(200, json={})
 
@@ -340,9 +372,11 @@ async def test_telemetry_shutdown_timeout_discards_and_logs_remaining(caplog):
         telemetry.record_latency(10.0)
         telemetry.record_latency(20.0)
         telemetry.record_latency(30.0)
-        # Allow worker to pick up the first item and block in hanging_handler
-        await asyncio.sleep(0.05)
+        # Ensure worker has picked up the first item and entered hanging_handler
+        await asyncio.wait_for(entered_hang.wait(), timeout=2.0)
 
+        import logging
+        caplog.set_level(logging.WARNING)
         caplog.clear()
         await telemetry.stop(timeout=0.15)
         hang_event.set()

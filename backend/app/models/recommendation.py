@@ -9,6 +9,8 @@ class Recommendation(Base, UUIDMixin, TimestampMixin):
 
     investigation_id = Column(GUID, ForeignKey("investigations.id", ondelete="CASCADE"), index=True, nullable=False)
     finding_id = Column(GUID, ForeignKey("findings.id", ondelete="SET NULL"), index=True, nullable=True)
+    incident_id = Column(GUID, ForeignKey("incidents.id", ondelete="CASCADE"), index=True, nullable=True)
+    project_id = Column(GUID, ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=True)
     title = Column(String(256), nullable=False)
     action_type = Column(String(32), default="immediate", nullable=False)  # immediate, preventative, configuration
     description = Column(Text, nullable=False)
@@ -19,7 +21,7 @@ class Recommendation(Base, UUIDMixin, TimestampMixin):
     is_demo = Column(Boolean, default=True, nullable=False)
 
     # Phase 4 Lifecycle & Remediation Workflow fields
-    # Lifecycle: PROPOSED, APPROVED, REJECTED, EXECUTING, EXECUTED, FAILED, CANCELLED
+    # Lifecycle: PROPOSED, APPROVED, REJECTED, EXECUTING, EXECUTED, FAILED, OUTCOME_UNKNOWN, CANCELLED
     status = Column(String(32), default="PROPOSED", server_default="PROPOSED", index=True, nullable=False)
     target_service = Column(String(128), nullable=True)
     action_name = Column(String(64), nullable=True)
@@ -37,9 +39,12 @@ class Recommendation(Base, UUIDMixin, TimestampMixin):
     rejected_at = Column(DateTime(timezone=True), nullable=True)
     rejection_reason = Column(Text, nullable=True)
 
-    # Safe Execution Fields
+    # Safe Execution & Concurrency Lease Fields
     executed_by = Column(String(128), nullable=True)
     executed_at = Column(DateTime(timezone=True), nullable=True)
+    execution_started_at = Column(DateTime(timezone=True), nullable=True)
+    execution_lease_expires_at = Column(DateTime(timezone=True), nullable=True)
+    execution_attempt_id = Column(String(64), nullable=True, index=True)
     execution_mode = Column(String(32), nullable=True)  # REAL, SIMULATED
     execution_idempotency_key = Column(String(64), nullable=True, index=True)
     execution_result_json = Column(JSONBCompat, nullable=True)
@@ -47,3 +52,5 @@ class Recommendation(Base, UUIDMixin, TimestampMixin):
 
     investigation = relationship("Investigation", back_populates="recommendations")
     finding = relationship("Finding", back_populates="recommendations")
+    incident = relationship("Incident", backref="recommendations")
+    project = relationship("Project", backref="recommendations")

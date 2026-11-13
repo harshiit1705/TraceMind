@@ -247,6 +247,8 @@ class IncidentService:
         rec = Recommendation(
             investigation_id=inv.id,
             finding_id=finding.id,
+            incident_id=inc_8492.id,
+            project_id=proj.id,
             title="Reset Payment Service Faults and Connection Locks",
             action_type="immediate",
             action_name="RESET_SERVICE_FAULTS",

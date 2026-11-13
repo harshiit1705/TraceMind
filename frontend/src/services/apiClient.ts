@@ -27,6 +27,8 @@ import {
   RemediationExecuteRequest,
   RemediationCancelRequest,
   RemediationProposeRequest,
+  RecoveryVerificationRequest,
+  RecoveryVerificationResponse,
 } from '../types';
 import { 
   MOCK_SERVICES, 
@@ -122,11 +124,45 @@ function mapBackendIncidentToItem(raw: any): IncidentItem {
 class ApiClient {
   private readonly dataMode: DataMode;
   private readonly baseUrl: string;
+  private authToken: string | null = (() => {
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        const stored = window.sessionStorage.getItem('tracemind_auth_token');
+        if (stored) return stored;
+      }
+    } catch {
+      // ignore
+    }
+    // In local development only, allow dev token via Vite env or fallback
+    if (import.meta.env.DEV) {
+      return (import.meta.env.VITE_OPERATOR_AUTH_TOKEN as string) || 'Bearer tracemind-sre-token';
+    }
+    return null;
+  })();
 
   constructor() {
     const envMode = import.meta.env.VITE_DATA_MODE as string;
     this.dataMode = envMode === 'api' ? 'api' : 'mock';
     this.baseUrl = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:8000';
+  }
+
+  public setAuthToken(token: string | null): void {
+    this.authToken = token;
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        if (token) {
+          window.sessionStorage.setItem('tracemind_auth_token', token);
+        } else {
+          window.sessionStorage.removeItem('tracemind_auth_token');
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  public getAuthToken(): string | null {
+    return this.authToken;
   }
 
   public getDataMode(): DataMode {
@@ -162,11 +198,16 @@ class ApiClient {
     // In API mode: execute remote HTTP call
     const fullUrl = `${this.baseUrl.replace(/\/$/, '')}/${endpoint.replace(/^\//, '')}`;
     try {
+      const authHeaders: Record<string, string> = this.authToken
+        ? { Authorization: this.authToken.startsWith('Bearer ') ? this.authToken : `Bearer ${this.authToken}` }
+        : {};
+
       const response = await fetch(fullUrl, {
         method: options?.method || 'GET',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          ...authHeaders,
           ...(options?.headers || {}),
         },
         body: options?.body,
@@ -941,6 +982,127 @@ class ApiClient {
     return this.request<RemediationDetail>(
       `/api/v1/remediations/${encodeURIComponent(remediationId)}/cancel${qs}`,
       mockRem,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
+  }
+
+  public async verifyRecovery(
+    incidentId: string,
+    remediationId: string,
+    payload: RecoveryVerificationRequest = {},
+    projectId?: string
+  ): Promise<ApiResponse<RecoveryVerificationResponse>> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    const mockVerification: RecoveryVerificationResponse = {
+      id: `ver-${Date.now()}`,
+      incident_id: incidentId,
+      remediation_id: remediationId,
+      project_id: projectId || 'demo-project-id',
+      target_service: 'payment-service',
+      status: 'COMPLETED',
+      recovery_outcome: 'RECOVERED',
+      sample_count: 12,
+      checks_summary: [
+        {
+          check_name: 'telemetry_sample_volume',
+          status: 'PASSED',
+          metric_name: 'sample_count',
+          observed_value: 12,
+          baseline_expected: '>=5',
+          details: 'Sufficient post-remediation telemetry volume collected (12 samples).',
+        },
+        {
+          check_name: 'latency_normalization',
+          status: 'PASSED',
+          metric_name: 'latency',
+          observed_value: 46.2,
+          baseline_expected: 80.0,
+          details: 'P95 latency normalized to 46.2ms (threshold: 80.0ms).',
+        },
+        {
+          check_name: 'error_rate_subsided',
+          status: 'PASSED',
+          metric_name: 'error_rate',
+          observed_value: 0.0,
+          baseline_expected: '<=1.0%',
+          details: 'Zero error rate telemetry anomalies recorded post-remediation.',
+        },
+        {
+          check_name: 'error_logs_cleared',
+          status: 'PASSED',
+          metric_name: 'error_log_count',
+          observed_value: 0,
+          baseline_expected: '0',
+          details: 'Zero ERROR or CRITICAL application logs recorded post-remediation.',
+        },
+        {
+          check_name: 'trace_error_spans_cleared',
+          status: 'PASSED',
+          metric_name: 'error_span_count',
+          observed_value: 0,
+          baseline_expected: '0',
+          details: 'Zero distributed trace error spans observed post-remediation.',
+        },
+      ],
+      evidence_snapshot: {
+        latency_p95_ms: 46.2,
+        error_log_count: 0,
+        error_span_count: 0,
+      },
+      explanation: 'Service has fully RECOVERED. All 5 telemetry checks passed: latency normalized to historical baseline, zero error rate, zero error logs, and clean distributed traces confirmed.',
+      suggested_incident_status: 'MITIGATED',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    return this.request<RecoveryVerificationResponse>(
+      `/api/v1/incidents/${encodeURIComponent(incidentId)}/remediations/${encodeURIComponent(remediationId)}/verify${qs}`,
+      mockVerification,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
+  }
+
+  public async getVerification(
+    verificationId: string,
+    projectId?: string
+  ): Promise<ApiResponse<RecoveryVerificationResponse>> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    return this.request<RecoveryVerificationResponse>(
+      `/api/v1/verifications/${encodeURIComponent(verificationId)}${qs}`,
+      undefined as any,
+      { method: 'GET' }
+    );
+  }
+
+  public async listIncidentVerifications(
+    incidentId: string,
+    projectId?: string
+  ): Promise<ApiResponse<RecoveryVerificationResponse[]>> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    return this.request<RecoveryVerificationResponse[]>(
+      `/api/v1/verifications/incident/${encodeURIComponent(incidentId)}${qs}`,
+      [],
+      { method: 'GET' }
+    );
+  }
+
+  public async retryVerification(
+    verificationId: string,
+    payload: RecoveryVerificationRequest = {},
+    projectId?: string
+  ): Promise<ApiResponse<RecoveryVerificationResponse>> {
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+    return this.request<RecoveryVerificationResponse>(
+      `/api/v1/verifications/${encodeURIComponent(verificationId)}/retry${qs}`,
+      undefined as any,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

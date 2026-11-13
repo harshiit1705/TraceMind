@@ -8,6 +8,7 @@ from app.models.investigation import Investigation
 from app.models.evidence import Evidence
 from app.models.finding import Finding
 from app.models.recommendation import Recommendation
+from app.models.recovery_verification import RecoveryVerification
 from app.models.runbook import Runbook
 from app.models.feedback import InvestigationFeedback
 from app.models.anomaly import AnomalyBaseline, AnomalyEvent
@@ -35,6 +36,7 @@ __all__ = [
     "Evidence",
     "Finding",
     "Recommendation",
+    "RecoveryVerification",
     "Runbook",
     "InvestigationFeedback",
     "AnomalyBaseline",

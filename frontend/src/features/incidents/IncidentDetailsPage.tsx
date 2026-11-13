@@ -11,6 +11,7 @@ import {
   CorrelationGroup,
   ApplicationLogItem,
   RemediationDetail,
+  RecoveryVerificationResponse,
 } from '../../types';
 
 export const IncidentDetailsPage: React.FC = () => {
@@ -41,6 +42,11 @@ export const IncidentDetailsPage: React.FC = () => {
   const [remediationError, setRemediationError] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<boolean>(false);
 
+  // Phase 5 Recovery Verification State
+  const [verificationsByRemediation, setVerificationsByRemediation] = useState<Record<string, RecoveryVerificationResponse>>({});
+  const [verifyingRemediationId, setVerifyingRemediationId] = useState<string | null>(null);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+
   const loadTimeline = useCallback(async (id: string) => {
     try {
       const res = await apiClient.getIncidentTimeline(id);
@@ -59,6 +65,21 @@ export const IncidentDetailsPage: React.FC = () => {
       // Non-blocking fallback
     } finally {
       setLoadingRemediations(false);
+    }
+  }, []);
+
+  const loadVerifications = useCallback(async (incId: string, projId?: string) => {
+    try {
+      const res = await apiClient.listIncidentVerifications(incId, projId);
+      if (res.data) {
+        const mapping: Record<string, RecoveryVerificationResponse> = {};
+        for (const v of res.data) {
+          mapping[v.remediation_id] = v;
+        }
+        setVerificationsByRemediation(mapping);
+      }
+    } catch {
+      // Non-blocking fallback
     }
   }, []);
 
@@ -94,6 +115,7 @@ export const IncidentDetailsPage: React.FC = () => {
         if (res.data) {
           loadTimeline(res.data.id);
           loadRemediations(res.data.id);
+          loadVerifications(res.data.id, (res.data.project_id || res.data.projectId) ?? undefined);
           const corrId = res.data.correlationGroupId || res.data.correlation_group_id;
           if (corrId) {
             loadInvestigation(corrId, res.data.id);
@@ -194,6 +216,37 @@ export const IncidentDetailsPage: React.FC = () => {
       setRemediationError(e.message || 'Failed to cancel remediation.');
     } finally {
       setActionInProgress(false);
+    }
+  };
+
+  const handleVerifyRecovery = async (remId: string) => {
+    if (!incident) return;
+    setVerifyingRemediationId(remId);
+    setVerificationError(null);
+    try {
+      const projId = (incident.project_id || incident.projectId) ?? undefined;
+      const res = await apiClient.verifyRecovery(
+        incident.id,
+        remId,
+        { verification_window_seconds: 60, min_sample_count: 3 },
+        projId
+      );
+      if (res.data) {
+        setVerificationsByRemediation((prev) => ({
+          ...prev,
+          [remId]: res.data,
+        }));
+        await Promise.all([
+          loadTimeline(incident.id),
+          loadRemediations(incident.id),
+          apiClient.getIncidentById(incident.id).then((r) => r.data && setIncident(r.data)),
+        ]);
+      }
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      setVerificationError(e.message || 'Failed to verify recovery.');
+    } finally {
+      setVerifyingRemediationId(null);
     }
   };
 
@@ -778,6 +831,22 @@ export const IncidentDetailsPage: React.FC = () => {
             </div>
           )}
 
+          {verificationError && (
+            <div className="p-3 rounded-lg bg-error-container/80 text-on-error-container flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px]">warning</span>
+                <span>Recovery Verification Notice: {verificationError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVerificationError(null)}
+                className="text-on-error-container hover:opacity-70 font-semibold"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {loadingRemediations ? (
             <div className="py-space-md flex justify-center">
               <LoadingSpinner message="Loading incident remediations..." />
@@ -1041,6 +1110,167 @@ export const IncidentDetailsPage: React.FC = () => {
                       </div>
                     )}
 
+                    {/* Phase 5 Telemetry Recovery Verification Card */}
+                    {(rem.status === 'EXECUTED' || verificationsByRemediation[rem.id]) && (() => {
+                      const v = verificationsByRemediation[rem.id];
+                      const isVerifying = verifyingRemediationId === rem.id;
+
+                      const outcomeBadge = (outcome?: string | null) => {
+                        switch (outcome) {
+                          case 'RECOVERED':
+                            return (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded font-mono-badge text-xs font-bold bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200 border border-emerald-400 dark:border-emerald-700 shadow-sm">
+                                <span className="material-symbols-outlined text-[16px] text-emerald-600 dark:text-emerald-400">check_circle</span>
+                                RECOVERED (ALL TELEMETRY CRITERIA PASSED)
+                              </span>
+                            );
+                          case 'PARTIALLY_RECOVERED':
+                            return (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded font-mono-badge text-xs font-bold bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200 border border-amber-400 dark:border-amber-700 shadow-sm">
+                                <span className="material-symbols-outlined text-[16px] text-amber-600 dark:text-amber-400">warning</span>
+                                PARTIALLY RECOVERED (SOME CRITERIA PERSIST)
+                              </span>
+                            );
+                          case 'NOT_RECOVERED':
+                            return (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded font-mono-badge text-xs font-bold bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200 border border-rose-400 dark:border-rose-700 shadow-sm">
+                                <span className="material-symbols-outlined text-[16px] text-rose-600 dark:text-rose-400">cancel</span>
+                                NOT RECOVERED (HIGH LATENCY / ERRORS PERSIST)
+                              </span>
+                            );
+                          case 'INCONCLUSIVE':
+                            return (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded font-mono-badge text-xs font-bold bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 shadow-sm">
+                                <span className="material-symbols-outlined text-[16px] text-slate-500">help_outline</span>
+                                INCONCLUSIVE (INSUFFICIENT SAMPLE VOLUME / ZERO TRAFFIC)
+                              </span>
+                            );
+                          default:
+                            return (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded font-mono-badge text-xs font-bold bg-surface-container text-on-surface-variant border border-outline-variant/30">
+                                <span className="material-symbols-outlined text-[16px] text-outline">pending</span>
+                                AWAITING TELEMETRY VERIFICATION
+                              </span>
+                            );
+                        }
+                      };
+
+                      return (
+                        <div className="p-3.5 rounded-lg bg-surface-container-high/60 border border-primary/20 flex flex-col gap-3 mt-1 shadow-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/20 pb-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="material-symbols-outlined text-primary text-[20px]">verified</span>
+                              <span className="font-title-sm text-title-sm font-semibold text-on-surface">
+                                Post-Remediation Recovery Verification
+                              </span>
+                              <span className="font-mono-badge text-[10px] px-2 py-0.5 rounded bg-primary-fixed/20 text-primary border border-primary/20 font-medium">
+                                DETERMINISTIC EVALUATION
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {outcomeBadge(v?.recovery_outcome)}
+                            </div>
+                          </div>
+
+                          {/* Explanation Banner */}
+                          {v && (
+                            <div className="p-2.5 rounded bg-surface-container-lowest/80 border border-outline-variant/20 flex flex-col gap-1 text-xs">
+                              <div className="flex items-center justify-between text-outline font-mono-caption text-[11px] flex-wrap gap-2">
+                                <span>Target: {v.target_service}</span>
+                                <span>Samples: {v.sample_count} observed</span>
+                                {v.suggested_incident_status && (
+                                  <span className="font-semibold text-primary">
+                                    Suggested Incident Status: {v.suggested_incident_status}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-on-surface font-body-default text-xs leading-relaxed mt-1">
+                                {v.explanation}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Telemetry Checks Breakdown */}
+                          {v && v.checks_summary && v.checks_summary.length > 0 && (
+                            <div className="flex flex-col gap-1.5">
+                              <span className="font-mono-badge text-[10px] uppercase font-semibold text-outline">
+                                Automated Telemetry Criteria Checks:
+                              </span>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                {v.checks_summary.map((check, cIdx) => {
+                                  const isPass = check.status === 'PASSED';
+                                  const isFail = check.status === 'FAILED';
+                                  return (
+                                    <div
+                                      key={cIdx}
+                                      className={`p-2 rounded border flex flex-col gap-1 ${
+                                        isPass
+                                          ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/60'
+                                          : isFail
+                                          ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800/60'
+                                          : 'bg-slate-50/50 dark:bg-slate-800/20 border-slate-200 dark:border-slate-700'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between font-mono-badge text-[11px] font-semibold">
+                                        <span className="flex items-center gap-1">
+                                          <span
+                                            className={`material-symbols-outlined text-[14px] ${
+                                              isPass ? 'text-emerald-600' : isFail ? 'text-rose-600' : 'text-slate-500'
+                                            }`}
+                                          >
+                                            {isPass ? 'check_circle' : isFail ? 'cancel' : 'help'}
+                                          </span>
+                                          {check.check_name.replace(/_/g, ' ').toUpperCase()}
+                                        </span>
+                                        <span
+                                          className={`px-1.5 py-0.2 rounded text-[10px] uppercase ${
+                                            isPass
+                                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200'
+                                              : isFail
+                                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200'
+                                              : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
+                                          }`}
+                                        >
+                                          {check.status}
+                                        </span>
+                                      </div>
+                                      <div className="text-[11px] text-on-surface-variant flex items-center justify-between font-mono">
+                                        {check.observed_value !== undefined && check.observed_value !== null && (
+                                          <span>Observed: {check.observed_value}</span>
+                                        )}
+                                        {check.baseline_expected !== undefined && check.baseline_expected !== null && (
+                                          <span className="text-outline">Baseline: {check.baseline_expected}</span>
+                                        )}
+                                      </div>
+                                      <p className="text-[11px] text-on-surface-variant leading-snug">
+                                        {check.details}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Verify / Retry Action Button */}
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-[11px] text-outline font-caption-ui">
+                              {v ? 'Re-run verification against latest live telemetry window' : 'Verify telemetry normalization post-execution'}
+                            </span>
+                            <Button
+                              variant={v?.recovery_outcome === 'RECOVERED' ? 'surface' : 'primary'}
+                              size="sm"
+                              icon={isVerifying ? 'autorenew' : 'search_check'}
+                              onClick={() => handleVerifyRecovery(rem.id)}
+                              disabled={isVerifying || actionInProgress}
+                            >
+                              {isVerifying ? 'Verifying Telemetry...' : v ? 'Re-run Recovery Verification' : 'Verify Service Recovery'}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {/* Inline Form Drawer for Approval / Rejection / Execution */}
                     {isActionActive && (
                       <div className="p-3 rounded-lg bg-surface-container-high/80 border border-primary/30 flex flex-col gap-2.5 animate-fadeIn">
@@ -1224,6 +1454,18 @@ export const IncidentDetailsPage: React.FC = () => {
                                 Execute Remediation
                               </Button>
                             </>
+                          )}
+
+                          {rem.status === 'EXECUTED' && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              icon={verifyingRemediationId === rem.id ? 'autorenew' : 'search_check'}
+                              onClick={() => handleVerifyRecovery(rem.id)}
+                              disabled={verifyingRemediationId === rem.id || actionInProgress}
+                            >
+                              {verifyingRemediationId === rem.id ? 'Verifying Telemetry...' : 'Verify Service Recovery'}
+                            </Button>
                           )}
                         </div>
                       </div>

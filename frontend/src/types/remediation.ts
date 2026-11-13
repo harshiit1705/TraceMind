@@ -9,6 +9,7 @@ export type RemediationStatus =
   | 'EXECUTING'
   | 'EXECUTED'
   | 'FAILED'
+  | 'OUTCOME_UNKNOWN'
   | 'CANCELLED';
 
 export type RemediationExecutionMode = 'REAL' | 'SIMULATED';
@@ -48,6 +49,11 @@ export interface RemediationDetail {
   executed_at?: string | null;
   execution_mode?: RemediationExecutionMode | null;
   execution_idempotency_key?: string | null;
+  execution_attempt_id?: string | null;
+  execution_started_at?: string | null;
+  execution_lease_expires_at?: string | null;
+  incident_id?: string | null;
+  project_id?: string | null;
   execution_result_json?: Record<string, any> | null;
   execution_error?: string | null;
   created_at?: string | null;

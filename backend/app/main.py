@@ -24,10 +24,10 @@ logger = logging.getLogger("tracemind.main")
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager: sets up database tables and seeds demo data on startup."""
     active_settings = get_settings()
-    setup_logging()
-    logger.info("Initializing TraceMind backend v%s (%s)", active_settings.APP_VERSION, active_settings.ENVIRONMENT)
-
     runtime_env = os.environ.get("ENVIRONMENT", active_settings.ENVIRONMENT)
+    if runtime_env not in ("test", "testing"):
+        setup_logging()
+    logger.info("Initializing TraceMind backend v%s (%s)", active_settings.APP_VERSION, active_settings.ENVIRONMENT)
     if active_settings.DEMO_MODE and runtime_env not in ("test", "testing"):
         try:
             logger.info("DEMO_MODE=True: Ensuring database tables exist...")

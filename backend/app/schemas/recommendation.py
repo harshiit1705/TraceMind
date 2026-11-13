@@ -13,6 +13,7 @@ class RemediationStatus(str, Enum):
     EXECUTING = "EXECUTING"
     EXECUTED = "EXECUTED"
     FAILED = "FAILED"
+    OUTCOME_UNKNOWN = "OUTCOME_UNKNOWN"
     CANCELLED = "CANCELLED"
 
 
@@ -33,29 +34,48 @@ class AllowlistedAction(str, Enum):
 class RemediationApproveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    approver_name: str = Field(..., min_length=1, max_length=128, description="Human operator who approved this action")
     approval_notes: Optional[str] = Field(None, max_length=1000, description="Optional justification or context for approval")
+    approver_name: Optional[str] = Field(None, max_length=128, description="Optional client label; validated/overridden by authenticated principal")
 
 
 class RemediationRejectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    rejector_name: str = Field(..., min_length=1, max_length=128, description="Human operator who rejected this action")
-    rejection_reason: str = Field(..., min_length=3, max_length=1000, description="Mandatory reason for rejection")
+    rejection_reason: str = Field(..., min_length=3, max_length=1000, description="Mandatory justification for rejection")
+    rejector_name: Optional[str] = Field(None, max_length=128, description="Optional client label; validated/overridden by authenticated principal")
 
 
 class RemediationExecuteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    executor_name: str = Field(..., min_length=1, max_length=128, description="Human operator triggering execution")
-    idempotency_key: Optional[str] = Field(None, max_length=64, description="Unique client idempotency token to prevent double-execution")
+    execution_mode: Optional[RemediationExecutionMode] = Field(
+        None,
+        description="Explicit execution mode: REAL against running microservices or safe SIMULATED"
+    )
+    idempotency_key: Optional[str] = Field(
+        None,
+        min_length=8,
+        max_length=64,
+        description="Unique client idempotency token to prevent double-execution"
+    )
+    executor_name: Optional[str] = Field(None, max_length=128, description="Optional client label; validated/overridden by authenticated principal")
 
 
 class RemediationCancelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    cancelled_by: str = Field(..., min_length=1, max_length=128, description="Human operator cancelling this remediation")
     cancellation_reason: Optional[str] = Field(None, max_length=1000, description="Optional cancellation notes")
+    cancelled_by: Optional[str] = Field(None, max_length=128, description="Optional client label; validated/overridden by authenticated principal")
+
+
+class RemediationReconcileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reconciliation_notes: Optional[str] = Field(None, max_length=1000, description="Audit notes explaining the reconciliation decision")
+    force_outcome: Optional[RemediationStatus] = Field(
+        default=RemediationStatus.OUTCOME_UNKNOWN,
+        description="Target status for reconciliation: OUTCOME_UNKNOWN or FAILED"
+    )
 
 
 class RemediationProposeRequest(BaseModel):
@@ -103,10 +123,15 @@ class RecommendationResponse(BaseModel):
     rejection_reason: Optional[str] = None
     executed_by: Optional[str] = None
     executed_at: Optional[datetime] = None
+    execution_started_at: Optional[datetime] = None
+    execution_lease_expires_at: Optional[datetime] = None
+    execution_attempt_id: Optional[str] = None
     execution_mode: Optional[str] = None
     execution_idempotency_key: Optional[str] = None
     execution_result_json: Optional[Dict[str, Any]] = None
     execution_error: Optional[str] = None
+    incident_id: Optional[UUID] = None
+    project_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 

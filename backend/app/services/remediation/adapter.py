@@ -38,7 +38,12 @@ def normalize_service_name(service_name: str) -> str:
 
 
 class RealMicroserviceExecutionAdapter:
-    """Executes safe, verified HTTP actions against running demo microservices."""
+    """Executes safe, verified HTTP actions against running demo microservices.
+    
+    Only RESET_SERVICE_FAULTS is natively supported as a real execution against the demo fleet.
+    Other actions (scaling, process bounces, deployment rollbacks) require external infrastructure
+    orchestrators and are executed through the SimulatedExecutionAdapter.
+    """
 
     TIMEOUT_SECONDS = 3.0
 
@@ -46,10 +51,7 @@ class RealMicroserviceExecutionAdapter:
     def can_handle(cls, action_name: str, target_service: str) -> bool:
         normalized_service = normalize_service_name(target_service)
         normalized_action = (action_name or "").upper().strip()
-        is_supported_action = normalized_action in (
-            AllowlistedAction.RESET_SERVICE_FAULTS.value,
-            AllowlistedAction.RESTART_SERVICE.value,
-        )
+        is_supported_action = normalized_action == AllowlistedAction.RESET_SERVICE_FAULTS.value
         return is_supported_action and normalized_service in DEMO_SERVICE_PORTS
 
     @classmethod
@@ -178,13 +180,17 @@ class SimulatedExecutionAdapter:
             }
 
         elif normalized_action == AllowlistedAction.FLUSH_CONNECTION_POOL.value:
+            pool_type = parameters.get("pool_type", "database")
+            if not isinstance(pool_type, str) or pool_type.strip() not in ("database", "cache", "http"):
+                raise ParameterValidationError("Parameter 'pool_type' must be one of: 'database', 'cache', 'http'.")
             return {
                 "execution_mode": RemediationExecutionMode.SIMULATED.value,
                 "is_simulated": True,
                 "target_service": target_service,
                 "action": normalized_action,
+                "pool_type": pool_type.strip(),
                 "verified": True,
-                "simulation_notes": f"Connection pool flushed for {target_service}. Idle connections closed and pool metrics reset.",
+                "simulation_notes": f"Connection pool ({pool_type}) flushed for {target_service}. Idle connections closed and pool metrics reset.",
             }
 
         elif normalized_action == AllowlistedAction.DRAIN_TRAFFIC.value:
@@ -207,18 +213,36 @@ class SimulatedExecutionAdapter:
                 "simulation_notes": f"Traffic drained by {drain_pct}% from {target_service} pods.",
             }
 
-        elif normalized_action in (
-            AllowlistedAction.RESET_SERVICE_FAULTS.value,
-            AllowlistedAction.RESTART_SERVICE.value,
-        ):
-            # Safe simulated execution for offline environments or unit tests
+        elif normalized_action == AllowlistedAction.RESTART_SERVICE.value:
+            grace_period = parameters.get("grace_period_seconds", 10)
+            try:
+                grace_period = int(grace_period)
+            except (ValueError, TypeError):
+                raise ParameterValidationError("Parameter 'grace_period_seconds' must be an integer.")
+            if grace_period < 0 or grace_period > 300:
+                raise ParameterValidationError("Parameter 'grace_period_seconds' must be between 0 and 300.")
+            return {
+                "execution_mode": RemediationExecutionMode.SIMULATED.value,
+                "is_simulated": True,
+                "target_service": target_service,
+                "action": normalized_action,
+                "grace_period_seconds": grace_period,
+                "verified": True,
+                "simulation_notes": (
+                    f"Simulated container restart initiated for {target_service} with {grace_period}s grace period. "
+                    "(Note: Standalone demo microservices require orchestrator/Docker to perform physical restart)."
+                ),
+            }
+
+        elif normalized_action == AllowlistedAction.RESET_SERVICE_FAULTS.value:
+            # Explicitly simulated execution for unit testing or offline environments
             return {
                 "execution_mode": RemediationExecutionMode.SIMULATED.value,
                 "is_simulated": True,
                 "target_service": target_service,
                 "action": normalized_action,
                 "verified": True,
-                "simulation_notes": f"Simulated reset/restart applied to {target_service} in offline development mode.",
+                "simulation_notes": f"Simulated fault reset applied to {target_service} in offline test/mock mode.",
             }
 
         else:

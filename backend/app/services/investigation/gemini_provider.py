@@ -37,7 +37,7 @@ class GeminiInvestigationProvider(InvestigationProvider):
         model_name: Optional[str] = None,
         timeout_seconds: Optional[int] = None,
     ):
-        self.api_key = api_key or settings.GEMINI_API_KEY
+        self.api_key = api_key if api_key is not None else settings.GEMINI_API_KEY
         self.model_name = model_name or settings.GEMINI_MODEL
         self.timeout_seconds = timeout_seconds or settings.GEMINI_TIMEOUT_SECONDS
         self._client: Optional[genai.Client] = None
