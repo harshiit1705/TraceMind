@@ -6,12 +6,14 @@ Hardened in Phase 4.1:
 """
 
 import logging
+from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import AuthenticatedActor, authenticate_actor
 from app.db.session import get_db
+from app.models.recommendation import Recommendation
 from app.schemas.recommendation import (
     RemediationApproveRequest,
     RemediationCancelRequest,
@@ -37,6 +39,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/remediations", tags=["remediations"])
 
 
+def _resolve_remediation_project_id(db: Session, remediation_id: UUID, project_id: Optional[UUID]) -> UUID:
+    """Resolves project_id from query parameter or auto-discovers from remediation record."""
+    if project_id is not None:
+        return project_id
+    rec = db.query(Recommendation).filter(Recommendation.id == remediation_id).first()
+    if not rec:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Remediation '{remediation_id}' not found.")
+    return rec.project_id
+
+
 @router.get(
     "/{remediation_id}",
     response_model=RemediationDetailResponse,
@@ -44,13 +56,14 @@ router = APIRouter(prefix="/remediations", tags=["remediations"])
 )
 def get_remediation(
     remediation_id: UUID,
-    project_id: UUID = Query(..., description="Mandatory project UUID for tenant isolation"),
+    project_id: Optional[UUID] = Query(None, description="Optional project UUID for tenant isolation; auto-resolved if omitted"),
     actor: AuthenticatedActor = Depends(authenticate_actor),
     db: Session = Depends(get_db),
 ) -> RemediationDetailResponse:
+    effective_project_id = _resolve_remediation_project_id(db, remediation_id, project_id)
     service = RemediationService(db)
     try:
-        return service.get_remediation(remediation_id, project_id=project_id, actor=actor)
+        return service.get_remediation(remediation_id, project_id=effective_project_id, actor=actor)
     except RemediationNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except ProjectIsolationError as exc:
@@ -65,13 +78,14 @@ def get_remediation(
 def approve_remediation(
     remediation_id: UUID,
     payload: RemediationApproveRequest,
-    project_id: UUID = Query(..., description="Mandatory project UUID for tenant isolation"),
+    project_id: Optional[UUID] = Query(None, description="Optional project UUID for tenant isolation; auto-resolved if omitted"),
     actor: AuthenticatedActor = Depends(authenticate_actor),
     db: Session = Depends(get_db),
 ) -> RemediationDetailResponse:
+    effective_project_id = _resolve_remediation_project_id(db, remediation_id, project_id)
     service = RemediationService(db)
     try:
-        return service.approve_remediation(remediation_id, req=payload, project_id=project_id, actor=actor)
+        return service.approve_remediation(remediation_id, req=payload, project_id=effective_project_id, actor=actor)
     except RemediationNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except InvalidRemediationStateError as exc:
@@ -88,13 +102,14 @@ def approve_remediation(
 def reject_remediation(
     remediation_id: UUID,
     payload: RemediationRejectRequest,
-    project_id: UUID = Query(..., description="Mandatory project UUID for tenant isolation"),
+    project_id: Optional[UUID] = Query(None, description="Optional project UUID for tenant isolation; auto-resolved if omitted"),
     actor: AuthenticatedActor = Depends(authenticate_actor),
     db: Session = Depends(get_db),
 ) -> RemediationDetailResponse:
+    effective_project_id = _resolve_remediation_project_id(db, remediation_id, project_id)
     service = RemediationService(db)
     try:
-        return service.reject_remediation(remediation_id, req=payload, project_id=project_id, actor=actor)
+        return service.reject_remediation(remediation_id, req=payload, project_id=effective_project_id, actor=actor)
     except RemediationNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except InvalidRemediationStateError as exc:
@@ -111,13 +126,14 @@ def reject_remediation(
 def cancel_remediation(
     remediation_id: UUID,
     payload: RemediationCancelRequest,
-    project_id: UUID = Query(..., description="Mandatory project UUID for tenant isolation"),
+    project_id: Optional[UUID] = Query(None, description="Optional project UUID for tenant isolation; auto-resolved if omitted"),
     actor: AuthenticatedActor = Depends(authenticate_actor),
     db: Session = Depends(get_db),
 ) -> RemediationDetailResponse:
+    effective_project_id = _resolve_remediation_project_id(db, remediation_id, project_id)
     service = RemediationService(db)
     try:
-        return service.cancel_remediation(remediation_id, req=payload, project_id=project_id, actor=actor)
+        return service.cancel_remediation(remediation_id, req=payload, project_id=effective_project_id, actor=actor)
     except RemediationNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except InvalidRemediationStateError as exc:
@@ -134,13 +150,14 @@ def cancel_remediation(
 def execute_remediation(
     remediation_id: UUID,
     payload: RemediationExecuteRequest,
-    project_id: UUID = Query(..., description="Mandatory project UUID for tenant isolation"),
+    project_id: Optional[UUID] = Query(None, description="Optional project UUID for tenant isolation; auto-resolved if omitted"),
     actor: AuthenticatedActor = Depends(authenticate_actor),
     db: Session = Depends(get_db),
 ) -> RemediationDetailResponse:
+    effective_project_id = _resolve_remediation_project_id(db, remediation_id, project_id)
     service = RemediationService(db)
     try:
-        return service.execute_remediation(remediation_id, req=payload, project_id=project_id, actor=actor)
+        return service.execute_remediation(remediation_id, req=payload, project_id=effective_project_id, actor=actor)
     except RemediationNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except InvalidRemediationStateError as exc:

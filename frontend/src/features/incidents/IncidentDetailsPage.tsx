@@ -131,16 +131,17 @@ export const IncidentDetailsPage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [incidentId, loadTimeline, loadInvestigation, loadRemediations]);
+  }, [incidentId, loadTimeline, loadInvestigation, loadRemediations, loadVerifications]);
 
   const handleApproveRemediation = async (remId: string) => {
     setActionInProgress(true);
     setRemediationError(null);
     try {
+      const projId = (incident?.project_id || incident?.projectId) ?? undefined;
       const res = await apiClient.approveRemediation(remId, {
         approver_name: actionInput.operatorName || 'Alex Chen (Staff SRE)',
         approval_notes: actionInput.notesOrReason || 'Verified safe for production execution.',
-      });
+      }, projId);
       setRemediations((prev) => prev.map((r) => (r.id === remId ? res.data : r)));
       setActiveRemediationAction(null);
       if (incident) {
@@ -162,10 +163,11 @@ export const IncidentDetailsPage: React.FC = () => {
     setActionInProgress(true);
     setRemediationError(null);
     try {
+      const projId = (incident?.project_id || incident?.projectId) ?? undefined;
       const res = await apiClient.rejectRemediation(remId, {
         rejector_name: actionInput.operatorName || 'Alex Chen (Staff SRE)',
         rejection_reason: actionInput.notesOrReason,
-      });
+      }, projId);
       setRemediations((prev) => prev.map((r) => (r.id === remId ? res.data : r)));
       setActiveRemediationAction(null);
       if (incident) {
@@ -183,9 +185,10 @@ export const IncidentDetailsPage: React.FC = () => {
     setActionInProgress(true);
     setRemediationError(null);
     try {
+      const projId = (incident?.project_id || incident?.projectId) ?? undefined;
       const res = await apiClient.executeRemediation(remId, {
         executor_name: actionInput.operatorName || 'Alex Chen (Staff SRE)',
-      });
+      }, projId);
       setRemediations((prev) => prev.map((r) => (r.id === remId ? res.data : r)));
       setActiveRemediationAction(null);
       if (incident) {
@@ -203,10 +206,11 @@ export const IncidentDetailsPage: React.FC = () => {
     setActionInProgress(true);
     setRemediationError(null);
     try {
+      const projId = (incident?.project_id || incident?.projectId) ?? undefined;
       const res = await apiClient.cancelRemediation(remId, {
         cancelled_by: actionInput.operatorName || 'Alex Chen (Staff SRE)',
         cancellation_reason: 'Cancelled by operator.',
-      });
+      }, projId);
       setRemediations((prev) => prev.map((r) => (r.id === remId ? res.data : r)));
       if (incident) {
         await loadTimeline(incident.id);

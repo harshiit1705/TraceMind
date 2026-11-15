@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     def normalize_database_url(cls, v: str) -> str:
         if isinstance(v, str) and v.startswith("postgresql://"):
             return v.replace("postgresql://", "postgresql+psycopg2://", 1)
+       
         return v
 
     # CORS configuration for frontend dev servers
@@ -41,7 +42,7 @@ class Settings(BaseSettings):
     # Google Gemini AI Provider Configuration
     GEMINI_API_KEY: Optional[str] = Field(default=None, description="Google Gemini API key for incident investigation")
     GEMINI_MODEL: str = Field(default="gemini-2.5-flash", description="Stable Gemini model for root-cause synthesis")
-    GEMINI_TIMEOUT_SECONDS: int = Field(default=25, description="Timeout in seconds for Gemini API investigation requests")
+    GEMINI_TIMEOUT_SECONDS: int = Field(default=75, description="Timeout in seconds for Gemini API investigation requests")
     INVESTIGATION_PROMPT_VERSION: str = "v1.0"
     INVESTIGATION_SCHEMA_VERSION: str = "v1.0"
 

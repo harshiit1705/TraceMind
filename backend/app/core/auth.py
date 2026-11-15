@@ -157,9 +157,12 @@ def authenticate_actor(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # In production environments, strictly block all static development/testing fixtures
     settings = get_settings()
-    is_prod = settings.ENVIRONMENT.lower() in ("prod", "production")
+    env = settings.ENVIRONMENT.lower()
+    is_prod = env in ("prod", "production")
+    is_test = env in ("test", "testing")
+
+    # In production environments, strictly block all static development/testing fixtures
     if is_prod and (token in KNOWN_DEV_TOKENS or token in ("default-dev-token", "tracemind-dev-token")):
         logger.error("Security violation: Attempted to use static development credentials in production environment!")
         raise HTTPException(
@@ -173,7 +176,15 @@ def authenticate_actor(
         return KNOWN_DEV_TOKENS[token]
 
     # Handle structured test tokens (e.g. JSON-encoded actor for hermetic unit testing)
+    # MUST ONLY be accepted when ENVIRONMENT is 'test' or 'testing'. Rejected in development and production.
     if token.startswith("{") and token.endswith("}"):
+        if not is_test:
+            logger.warning("Security violation: Attempted to use structured test credentials in %s environment!", env)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Structured test credentials are only permitted in test environments.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         try:
             data = json.loads(token)
             pids = None
@@ -186,11 +197,18 @@ def authenticate_actor(
                 role=OperatorRole(data.get("role", "sre")),
                 allowed_project_ids=pids,
             )
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.warning("Failed to parse structured token: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Malformed structured test credentials.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
-    # Allow custom API key matching configured DEV key
-    if token == "default-dev-token" or token == "tracemind-dev-token":
+    # Allow custom API key matching configured DEV key (only in non-production)
+    if not is_prod and (token == "default-dev-token" or token == "tracemind-dev-token"):
         return DEFAULT_DEV_ACTOR
 
     # Token unrecognized -> Reject with 401

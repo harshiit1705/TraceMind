@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button, LoadingSpinner, ErrorState } from '../../components/common';
 import { apiClient } from '../../services/apiClient';
@@ -13,7 +13,11 @@ import {
 
 export const AiInvestigationPage: React.FC = () => {
   const { id: routeId } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  const queryCorrelationId = searchParams.get('correlation_group_id') || searchParams.get('id') || undefined;
+  const effectiveTargetId = routeId || queryCorrelationId;
 
   // Correlation & Investigation state
   const [correlations, setCorrelations] = useState<CorrelationGroup[]>([]);
@@ -30,10 +34,10 @@ export const AiInvestigationPage: React.FC = () => {
   // Helper: Determine if the active investigation is a legacy Phase 2.1 demo
   const isLegacyDemo = useMemo(() => {
     if (legacyInvestigation) return true;
-    if (routeId?.startsWith('INC-') || routeId?.toLowerCase().includes('demo')) return true;
+    if (effectiveTargetId?.startsWith('INC-') || effectiveTargetId?.toLowerCase().includes('demo')) return true;
     if (investigation?.is_demo === true && !investigation.result) return true;
     return false;
-  }, [legacyInvestigation, investigation, routeId]);
+  }, [legacyInvestigation, investigation, effectiveTargetId]);
 
   // Load correlations and initial investigation data
   const loadData = useCallback(async (targetCorrelationId?: string) => {
@@ -47,48 +51,45 @@ export const AiInvestigationPage: React.FC = () => {
       setCorrelations(groups);
 
       let activeGroup: CorrelationGroup | null = null;
+      const lookupId = targetCorrelationId || effectiveTargetId;
 
-      // If routeId is provided, check if it matches a correlation group directly
-      if (routeId && !routeId.startsWith('INC-') && !routeId.toLowerCase().includes('demo')) {
-        activeGroup = groups.find((g) => g.id === routeId) || null;
+      // If lookupId is provided, check if it matches a correlation group directly
+      if (lookupId && !lookupId.startsWith('INC-') && !lookupId.toLowerCase().includes('demo')) {
+        activeGroup = groups.find((g) => g.id === lookupId) || null;
         if (!activeGroup) {
           try {
             // Attempt fetching correlation group by id in case it wasn't in top list
-            const singleCorr = await apiClient.getCorrelationById(routeId);
+            const singleCorr = await apiClient.getCorrelationById(lookupId);
             activeGroup = singleCorr.data;
           } catch {
-            // routeId is an investigation ID or legacy incident ID
+            // lookupId is an investigation ID or legacy incident ID
           }
         }
       }
 
-      if (!activeGroup && targetCorrelationId) {
-        activeGroup = groups.find((g) => g.id === targetCorrelationId) || null;
-      }
-
-      // Default to the first available correlation group ONLY if no routeId was specified
-      if (!routeId && !activeGroup && groups.length > 0) {
+      // Default to the first available correlation group ONLY if no target was specified
+      if (!lookupId && !activeGroup && groups.length > 0) {
         activeGroup = groups[0];
       }
 
       setSelectedCorrelation(activeGroup);
 
       // 2. Fetch or resolve the investigation record
-      if (routeId && !activeGroup) {
-        // routeId is an investigation ID or legacy incident ID
-        if (routeId.startsWith('INC-') || routeId.toLowerCase().includes('demo')) {
+      if (lookupId && !activeGroup) {
+        // lookupId is an investigation ID or legacy incident ID
+        if (lookupId.startsWith('INC-') || lookupId.toLowerCase().includes('demo')) {
           try {
-            const incRes = await apiClient.getIncidentById(routeId);
+            const incRes = await apiClient.getIncidentById(lookupId);
             setLegacyInvestigation({
-              id: routeId,
-              incidentId: routeId,
+              id: lookupId,
+              incidentId: lookupId,
               agentName: "Autonomous Agent #4",
               status: "Analysis Complete",
               elapsedTime: "4m 12s",
               correlationScope: 42,
               spansAnalyzed: 128400,
               confidenceScore: 94,
-              rootCauseTitle: incRes.data?.title ? `Root Cause: ${incRes.data.title}` : `Root Cause Investigation: ${routeId}`,
+              rootCauseTitle: incRes.data?.title ? `Root Cause: ${incRes.data.title}` : `Root Cause Investigation: ${lookupId}`,
               rootCauseDescription: incRes.data?.rootCauseSummary || "Simulated demo investigation",
               propagationGraph: [],
               evidence: [],
@@ -100,15 +101,15 @@ export const AiInvestigationPage: React.FC = () => {
             setError(null);
           } catch {
             setLegacyInvestigation({
-              id: routeId,
-              incidentId: routeId,
+              id: lookupId,
+              incidentId: lookupId,
               agentName: "Autonomous Agent #4",
               status: "Analysis Complete",
               elapsedTime: "4m 12s",
               correlationScope: 42,
               spansAnalyzed: 128400,
               confidenceScore: 94,
-              rootCauseTitle: `Root Cause Investigation: ${routeId}`,
+              rootCauseTitle: `Root Cause Investigation: ${lookupId}`,
               rootCauseDescription: "Simulated demonstration incident from Phase 2.1 catalog.",
               propagationGraph: [],
               evidence: [],
@@ -121,7 +122,7 @@ export const AiInvestigationPage: React.FC = () => {
           }
         } else {
           try {
-            const invRes = await apiClient.getInvestigation(routeId);
+            const invRes = await apiClient.getInvestigation(lookupId);
             const data = invRes.data;
             if (data && 'prompt_version' in data) {
               setInvestigation(data as GroundedInvestigationResponse);
@@ -192,7 +193,7 @@ export const AiInvestigationPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [routeId]);
+  }, [effectiveTargetId]);
 
   useEffect(() => {
     loadData();

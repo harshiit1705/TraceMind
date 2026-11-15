@@ -124,6 +124,16 @@ def root():
     }
 
 
+@app.get("/health", summary="Root Health Check", tags=["Meta"])
+def root_health():
+    return {
+        "status": "healthy",
+        "app_name": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT,
+    }
+
+
 # Include API v1 router
 app.include_router(api_v1_router, prefix=settings.API_V1_PREFIX)
 

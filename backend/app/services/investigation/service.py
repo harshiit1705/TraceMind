@@ -142,9 +142,15 @@ class InvestigationService:
         event_count = len(group.event_associations) if group.event_associations else 0
         spans_count = evidence.signal_coverage.trace_spans_count if evidence.signal_coverage else 0
 
+        linked_incident = (
+            self.db.query(Incident)
+            .filter(Incident.correlation_group_id == correlation_group_id)
+            .first()
+        )
+
         investigation = Investigation(
             correlation_group_id=correlation_group_id,
-            incident_id=None,
+            incident_id=linked_incident.id if linked_incident else None,
             provider=provider_name,
             model_name=model_name,
             prompt_version=settings.INVESTIGATION_PROMPT_VERSION,
@@ -210,7 +216,7 @@ class InvestigationService:
                 rec_row = Recommendation(
                     investigation_id=investigation.id,
                     incident_id=linked_incident.id if linked_incident else None,
-                    project_id=linked_incident.project_id if linked_incident else None,
+                    project_id=linked_incident.project_id if linked_incident else group.project_id,
                     title=ai_rec.title,
                     action_type=ai_rec.action_type.value,
                     action_name=action_name,

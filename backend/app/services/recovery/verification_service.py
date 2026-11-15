@@ -607,6 +607,7 @@ class RecoveryVerificationService:
 
             # If service fully recovered, advance incident status safely
             if outcome == RecoveryOutcome.RECOVERED and incident.status in (
+                IncidentStatus.DETECTED.value,
                 IncidentStatus.INVESTIGATING.value,
                 IncidentStatus.ACKNOWLEDGED.value,
             ):

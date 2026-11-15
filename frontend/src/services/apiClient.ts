@@ -113,6 +113,8 @@ function mapBackendIncidentToItem(raw: any): IncidentItem {
     affectedServices: raw.affected_services || [],
     correlationGroupId: raw.correlation_group_id || null,
     correlation_group_id: raw.correlation_group_id || null,
+    projectId: raw.project_id || raw.projectId || null,
+    project_id: raw.project_id || raw.projectId || null,
     isDemo: Boolean(raw.is_demo),
     is_demo: Boolean(raw.is_demo),
     summary: raw.summary || '',
@@ -1088,7 +1090,7 @@ class ApiClient {
   ): Promise<ApiResponse<RecoveryVerificationResponse[]>> {
     const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
     return this.request<RecoveryVerificationResponse[]>(
-      `/api/v1/verifications/incident/${encodeURIComponent(incidentId)}${qs}`,
+      `/api/v1/incidents/${encodeURIComponent(incidentId)}/verifications${qs}`,
       [],
       { method: 'GET' }
     );

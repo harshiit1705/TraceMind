@@ -93,6 +93,8 @@ ALLOWED_FIELDS_BY_SOURCE_TYPE: Dict[str, Set[str]] = {
         "deviation_pct",
         "sample_count",
         "status",
+        "is_anomalous",
+        "first_breach_at",
     },
     "application_log": {
         "level",
@@ -142,21 +144,29 @@ def validate_investigation_result_against_evidence(
     - Citations cite valid source types, verified source IDs, and authentic fields available on those records.
     - Every remediation action requires explicit human approval; no executable commands are permitted.
     """
-    event_map: Dict[UUID, EvidenceEventItem] = {e.event_id: e for e in evidence.participating_events}
-    candidate_map: Dict[UUID, EvidenceCandidateItem] = {c.candidate_id: c for c in evidence.ranked_candidates}
+    event_map = {}
+    for e in (evidence.participating_events or []):
+        event_map[str(e.event_id)] = e
+        if isinstance(e.event_id, UUID):
+            event_map[e.event_id] = e
+
+    candidate_map = {}
+    for c in (evidence.ranked_candidates or []):
+        candidate_map[str(c.candidate_id)] = c
+        if isinstance(c.candidate_id, UUID):
+            candidate_map[c.candidate_id] = c
 
     # 1. Timeline event grounding: check event_id, service_id, service_name, metric_name, timestamp, severity
     for ev in result.timeline:
-        if ev.event_id not in event_map:
+        orig_ev = event_map.get(ev.event_id) or event_map.get(str(ev.event_id))
+        if not orig_ev:
             raise GroundingValidationError(
                 f"Grounding violation: Timeline event references foreign or hallucinated anomaly event ID '{ev.event_id}'. "
                 "All timeline events must originate from the correlation group's authentic anomaly events."
             )
 
-        orig_ev = event_map[ev.event_id]
-
         # Verify service_id
-        if ev.service_id != orig_ev.service_id:
+        if str(ev.service_id) != str(orig_ev.service_id):
             raise GroundingValidationError(
                 f"Grounding violation: Timeline event '{ev.event_id}' has mismatched service_id. "
                 f"Expected '{orig_ev.service_id}', received '{ev.service_id}'."
@@ -194,14 +204,14 @@ def validate_investigation_result_against_evidence(
 
     # 2. Root cause candidate grounding
     rc = result.root_cause_analysis
-    if rc.candidate_id not in candidate_map:
+    matched_candidate = candidate_map.get(rc.candidate_id) or candidate_map.get(str(rc.candidate_id))
+    if not matched_candidate:
         raise GroundingValidationError(
             f"Grounding violation: Root cause explanation cites candidate ID '{rc.candidate_id}', "
             "which does not exist among the deterministic ranked candidates in this correlation group."
         )
 
-    matched_candidate = candidate_map[rc.candidate_id]
-    if rc.service_id != matched_candidate.service_id:
+    if str(rc.service_id) != str(matched_candidate.service_id):
         raise GroundingValidationError(
             f"Grounding violation: Candidate service ID mismatch for candidate '{rc.candidate_id}'. "
             f"Expected '{matched_candidate.service_id}', received '{rc.service_id}'."
