@@ -21,6 +21,11 @@ class ActionNotAllowlistedError(RemediationError):
     pass
 
 
+class AdvisoryRecommendationError(ActionNotAllowlistedError):
+    """Raised when execution is attempted on an advisory recommendation with no executable allowlisted action."""
+    pass
+
+
 class ParameterValidationError(RemediationError):
     """Raised when action parameters fail validation rules."""
     pass

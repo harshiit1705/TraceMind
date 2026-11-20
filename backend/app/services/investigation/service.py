@@ -200,30 +200,35 @@ class InvestigationService:
                 .filter(Incident.correlation_group_id == correlation_group_id)
                 .first()
             )
+            AI_ACTION_TO_EXECUTABLE_ACTION = {
+                "restart": "RESTART_SERVICE",
+                "scaling": "SCALE_REPLICAS",
+                "rollback": "ROLLBACK_DEPLOYMENT",
+                "failover": "DRAIN_TRAFFIC",
+                "configuration": None,
+            }
+
             for ai_rec in provider_result.result.remediation_recommendations:
-                # Map action type to standard allowlisted action
-                action_name = "RESET_SERVICE_FAULTS"
-                act_str = ai_rec.action_type.value.lower()
-                if "restart" in act_str:
-                    action_name = "RESTART_SERVICE"
-                elif "scale" in act_str:
-                    action_name = "SCALE_REPLICAS"
-                elif "rollback" in act_str:
-                    action_name = "ROLLBACK_DEPLOYMENT"
-                elif "failover" in act_str:
-                    action_name = "DRAIN_TRAFFIC"
+                # Explicit mapping of AI action types to executable allowlisted actions
+                act_raw = (
+                    ai_rec.action_type.value
+                    if hasattr(ai_rec.action_type, "value")
+                    else str(ai_rec.action_type)
+                )
+                act_key = act_raw.lower().strip()
+                action_name = AI_ACTION_TO_EXECUTABLE_ACTION.get(act_key, None)
 
                 rec_row = Recommendation(
                     investigation_id=investigation.id,
                     incident_id=linked_incident.id if linked_incident else None,
                     project_id=linked_incident.project_id if linked_incident else group.project_id,
                     title=ai_rec.title,
-                    action_type=ai_rec.action_type.value,
+                    action_type=act_raw,
                     action_name=action_name,
                     target_service=ai_rec.target_service,
                     description=ai_rec.description,
                     command_snippet=ai_rec.command_snippet,
-                    risk_level=ai_rec.risk_level.value,
+                    risk_level=ai_rec.risk_level.value if hasattr(ai_rec.risk_level, "value") else str(ai_rec.risk_level),
                     is_dry_run_safe=True,
                     requires_human_approval=True,
                     status="PROPOSED",
@@ -236,17 +241,22 @@ class InvestigationService:
                 self.db.add(rec_row)
 
                 if linked_incident:
+                    desc = (
+                        f"AI proposed advisory recommendation for '{ai_rec.target_service}'. Requires human review."
+                        if action_name is None
+                        else f"AI proposed action '{action_name}' for '{ai_rec.target_service}'. Requires human approval."
+                    )
                     event = IncidentEvent(
                         incident_id=linked_incident.id,
                         timestamp=datetime.now(timezone.utc),
                         title=f"Remediation Proposed by AI Investigator: {ai_rec.title}",
                         event_type="agent",
                         source="TraceMind AI Investigator",
-                        description=f"AI proposed action '{action_name}' for '{ai_rec.target_service}'. Requires human approval.",
+                        description=desc,
                         payload={
                             "action_name": action_name,
                             "target_service": ai_rec.target_service,
-                            "risk_level": ai_rec.risk_level.value,
+                            "risk_level": ai_rec.risk_level.value if hasattr(ai_rec.risk_level, "value") else str(ai_rec.risk_level),
                         },
                     )
                     self.db.add(event)

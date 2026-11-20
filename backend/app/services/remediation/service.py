@@ -41,6 +41,7 @@ from app.services.remediation.adapter import (
 )
 from app.services.remediation.exceptions import (
     ActionNotAllowlistedError,
+    AdvisoryRecommendationError,
     DuplicateExecutionError,
     InvalidRemediationStateError,
     ParameterValidationError,
@@ -459,8 +460,13 @@ class RemediationService:
                 return self._to_detail_response(rec, incident)
             return self._to_detail_response(rec, incident)
 
-        # 3. Allowlist validation
-        action_name = rec.action_name or AllowlistedAction.RESET_SERVICE_FAULTS.value
+        # 3. Allowlist validation & Advisory check
+        if not rec.action_name or not str(rec.action_name).strip():
+            raise AdvisoryRecommendationError(
+                f"Recommendation '{rec.title}' is advisory and has no executable allowlisted action (action_name is null)."
+            )
+
+        action_name = str(rec.action_name).strip()
         allowlisted_values = [a.value for a in AllowlistedAction]
         if action_name not in allowlisted_values:
             raise ActionNotAllowlistedError(f"Action '{action_name}' is not in the approved remediation allowlist: {allowlisted_values}")

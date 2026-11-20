@@ -25,6 +25,7 @@ from app.schemas.recommendation import (
 from app.services.incident_service import IncidentNotFoundError, ProjectIsolationError
 from app.services.remediation.exceptions import (
     ActionNotAllowlistedError,
+    AdvisoryRecommendationError,
     DuplicateExecutionError,
     InvalidRemediationStateError,
     ParameterValidationError,
