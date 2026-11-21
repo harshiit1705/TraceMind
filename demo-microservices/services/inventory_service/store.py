@@ -111,9 +111,10 @@ class InventoryStore:
     ) -> Tuple[bool, List[OrderItem], Optional[str]]:
         """Atomically release a previously reserved order's stock back to inventory.
         
+        - Full-reservation-only: partial reservation release is explicitly rejected.
         - Validates that a reservation exists for order_id.
         - Idempotent: repeated release of an already-released reservation returns success without stock inflation.
-        - Rejects if reservation does not exist or if quantities exceed reserved amounts.
+        - Rejects if reservation does not exist or if partial release is requested.
         """
         with self._lock:
             if not order_id or not str(order_id).strip():
@@ -123,6 +124,18 @@ class InventoryStore:
             if not res:
                 return False, [], f"No reservation found for order '{order_id}'"
 
+            # Explicit full-reservation-only: reject requests that specify partial or mismatched items
+            if items is not None:
+                reserved_map = {item.sku: item.quantity for item in res["items"]}
+                requested_map = {item.sku: item.quantity for item in items}
+                if requested_map != reserved_map:
+                    return (
+                        False,
+                        [],
+                        f"Partial or mismatched release is not supported for order '{order_id}'. "
+                        "Releases must be for the full reservation.",
+                    )
+
             # Idempotent release: if already released, do not inflate stock again!
             if res["status"] == "RELEASED":
                 return True, res["items"], None
@@ -131,19 +144,6 @@ class InventoryStore:
                 return False, [], f"Invalid reservation state '{res['status']}' for order '{order_id}'"
 
             reserved_items = res["items"]
-
-            # If items are specified, ensure they do not exceed what was reserved
-            if items:
-                res_map = {item.sku: item.quantity for item in reserved_items}
-                for item in items:
-                    if item.sku not in res_map:
-                        return False, [], f"Item '{item.sku}' was not part of reservation for order '{order_id}'"
-                    if item.quantity > res_map[item.sku]:
-                        return (
-                            False,
-                            [],
-                            f"Release quantity {item.quantity} for SKU '{item.sku}' exceeds reserved quantity {res_map[item.sku]}",
-                        )
 
             # Increment stock back for the reserved items
             items_to_restore = reserved_items

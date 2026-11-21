@@ -469,3 +469,132 @@ async def test_concurrent_releases_preserve_stock_consistency():
         # Final stock must be exactly 100 (never 110, 120, etc.)
         item_final = await client.get("/inventory/SKU-LAPTOP-01")
         assert item_final.json()["available_stock"] == 100
+
+
+# ---------------------------------------------------------------------------
+# 11. Partial release rejection
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_inventory_partial_release_is_strictly_rejected():
+    """Attempting a partial release of a reservation is rejected with 400 and leaves stock unchanged."""
+    transport = httpx.ASGITransport(app=inv_main.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://inventory-test") as client:
+        # Reserve 2 laptops (100 -> 98)
+        res_req = InventoryReserveRequest(
+            order_id="ord-comp-partial",
+            items=[OrderItem(sku="SKU-LAPTOP-01", quantity=2, unit_price=1299.99)],
+        )
+        await client.post("/inventory/reserve", json=res_req.model_dump(mode="json"))
+
+        item_mid = await client.get("/inventory/SKU-LAPTOP-01")
+        assert item_mid.json()["available_stock"] == 98
+
+        # Attempt to release only 1 of the 2 units
+        rel_partial = InventoryReleaseRequest(
+            order_id="ord-comp-partial",
+            items=[OrderItem(sku="SKU-LAPTOP-01", quantity=1, unit_price=1299.99)],
+        )
+        resp = await client.post("/inventory/release", json=rel_partial.model_dump(mode="json"))
+        assert resp.status_code == 400
+        assert "Partial or mismatched release is not supported" in resp.json()["detail"]
+
+        # Stock must remain unchanged at 98 (NOT silently restored to 100 or 99)
+        item_unchanged = await client.get("/inventory/SKU-LAPTOP-01")
+        assert item_unchanged.json()["available_stock"] == 98
+
+        # Full release without partial items succeeds and restores stock to 100
+        rel_full = InventoryReleaseRequest(order_id="ord-comp-partial")
+        resp_full = await client.post("/inventory/release", json=rel_full.model_dump(mode="json"))
+        assert resp_full.status_code == 200
+        assert resp_full.json()["status"] == "RELEASED"
+
+        item_restored = await client.get("/inventory/SKU-LAPTOP-01")
+        assert item_restored.json()["available_stock"] == 100
+
+
+# ---------------------------------------------------------------------------
+# 12. Unexpected exception after successful reservation triggers compensation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_unexpected_exception_triggers_compensation(wired_clients, monkeypatch):
+    """An unexpected runtime exception after inventory reservation triggers compensation and preserves original error."""
+    app, inv_client, pay_client = wired_clients
+    transport = httpx.ASGITransport(app=app)
+
+    async def mock_charge_crash(*args, **kwargs):
+        raise RuntimeError("Unexpected unhandled DB corruption")
+
+    monkeypatch.setattr(order_main.clients, "charge_payment", mock_charge_crash)
+
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://order-test") as client:
+            req = OrderCreateRequest(
+                customer_id="cust-comp-unexp",
+                items=[OrderItem(sku="SKU-PHONE-02", quantity=2, unit_price=799.99)],
+            )
+            resp = await client.post("/orders", json=req.model_dump(mode="json"))
+            assert resp.status_code == 500
+            assert "Internal order processing error: Unexpected unhandled DB corruption" in resp.json()["detail"]
+
+            # Inventory compensation was executed: stock restored to 150
+            stock_resp = await inv_client.get("/inventory/SKU-PHONE-02")
+            assert stock_resp.json()["available_stock"] == 150
+
+            # Order record in Order Service DB shows FAILED and COMPENSATED
+            orders = list(order_main.orders_db.values())
+            assert len(orders) == 1
+            order = orders[0]
+            assert order.status == OrderStatus.FAILED
+            assert order.compensation_status == "COMPENSATED"
+            assert "Unexpected unhandled DB corruption" in order.error_message
+    finally:
+        await inv_client.aclose()
+        await pay_client.aclose()
+
+
+# ---------------------------------------------------------------------------
+# 13. Compensation failure in unexpected-error path records COMPENSATION_FAILED
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_unexpected_exception_with_compensation_failure_persists_compensation_failed(wired_clients, monkeypatch):
+    """When compensation fails during an unexpected error, COMPENSATION_FAILED is recorded while original error is preserved."""
+    app, inv_client, pay_client = wired_clients
+    transport = httpx.ASGITransport(app=app)
+
+    from services.order_service.client import DownstreamServiceError
+
+    async def mock_charge_crash(*args, **kwargs):
+        raise RuntimeError("Critical payment service crash")
+
+    async def mock_release_fail(*args, **kwargs):
+        raise DownstreamServiceError("inventory-service", 503, "Inventory cluster dead")
+
+    monkeypatch.setattr(order_main.clients, "charge_payment", mock_charge_crash)
+    monkeypatch.setattr(order_main.clients, "release_inventory", mock_release_fail)
+
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://order-test") as client:
+            req = OrderCreateRequest(
+                customer_id="cust-comp-unexp-fail",
+                items=[OrderItem(sku="SKU-KEYBOARD-04", quantity=1, unit_price=119.99)],
+            )
+            resp = await client.post("/orders", json=req.model_dump(mode="json"))
+            assert resp.status_code == 500
+            # Original checkout error is preserved in client-facing HTTP response
+            assert "Critical payment service crash" in resp.json()["detail"]
+
+            # Order record in Order Service DB explicitly records COMPENSATION_FAILED and compensation_error
+            orders = list(order_main.orders_db.values())
+            assert len(orders) == 1
+            order = orders[0]
+            assert order.status == OrderStatus.FAILED
+            assert order.compensation_status == "COMPENSATION_FAILED"
+            assert "Inventory cluster dead" in order.compensation_error
+            assert "Critical payment service crash" in order.error_message
+    finally:
+        await inv_client.aclose()
+        await pay_client.aclose()
+
