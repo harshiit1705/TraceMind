@@ -24,6 +24,7 @@ class InventoryStatus(str, Enum):
     RESERVED = "RESERVED"
     OUT_OF_STOCK = "OUT_OF_STOCK"
     FAILED = "FAILED"
+    RELEASED = "RELEASED"
 
 
 # --- Order Models ---
@@ -49,6 +50,8 @@ class OrderResponse(BaseModel):
     payment_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     error_message: Optional[str] = None
+    compensation_status: Optional[str] = None
+    compensation_error: Optional[str] = None
 
 
 # --- Payment Models ---
@@ -76,6 +79,12 @@ class InventoryReserveRequest(BaseModel):
     items: List[OrderItem]
 
 
+class InventoryReleaseRequest(BaseModel):
+    order_id: str = Field(..., min_length=1, max_length=64)
+    items: Optional[List[OrderItem]] = None
+    reason: Optional[str] = Field(default="payment_failed", max_length=256)
+
+
 class InventoryItem(BaseModel):
     sku: str
     name: str
@@ -87,6 +96,7 @@ class InventoryResponse(BaseModel):
     order_id: str
     status: InventoryStatus
     reserved_items: List[OrderItem] = Field(default_factory=list)
+    released_items: List[OrderItem] = Field(default_factory=list)
     error_message: Optional[str] = None
 
 

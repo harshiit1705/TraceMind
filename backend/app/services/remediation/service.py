@@ -48,6 +48,7 @@ from app.services.remediation.exceptions import (
     RemediationExecutionError,
     RemediationNotFoundError,
     RemediationTimeoutError,
+    UnsupportedExecutionModeError,
 )
 
 logger = logging.getLogger(__name__)
@@ -474,7 +475,31 @@ class RemediationService:
         target_service = rec.target_service or "inventory-service"
         parameters = rec.action_parameters or {}
 
-        # 4. Atomic execution claim (REL-01)
+        # 4. Strict execution mode resolution and validation (REL-02)
+        can_real_handle = RealMicroserviceExecutionAdapter.can_handle(action_name, target_service)
+        if req.execution_mode == RemediationExecutionMode.REAL:
+            if not can_real_handle:
+                raise UnsupportedExecutionModeError(
+                    f"Action '{action_name}' on target service '{target_service}' cannot be executed in REAL mode. "
+                    "Only RESET_SERVICE_FAULTS on demo microservices is natively supported in REAL mode. "
+                    "Explicitly request execution_mode='SIMULATED' for simulated execution."
+                )
+            target_mode = RemediationExecutionMode.REAL
+        elif req.execution_mode == RemediationExecutionMode.SIMULATED:
+            target_mode = RemediationExecutionMode.SIMULATED
+        elif req.execution_mode is None:
+            if can_real_handle:
+                target_mode = RemediationExecutionMode.REAL
+            else:
+                raise UnsupportedExecutionModeError(
+                    f"Action '{action_name}' on target service '{target_service}' is not supported for real microservice execution. "
+                    "Omitted execution mode only defaults to REAL when supported by the real microservice adapter. "
+                    "To execute this action in simulated mode, explicitly specify execution_mode='SIMULATED'."
+                )
+        else:
+            raise UnsupportedExecutionModeError(f"Unknown execution mode '{req.execution_mode}'.")
+
+        # 5. Atomic execution claim (REL-01)
         now = datetime.now(timezone.utc)
         attempt_id = f"attempt_{uuid4().hex[:12]}"
         lease_expires = now + timedelta(seconds=EXECUTION_LEASE_DURATION_SECONDS)
@@ -514,21 +539,16 @@ class RemediationService:
             event_type="action",
             actor=actor,
             title=f"Remediation Execution Started: {rec.title}",
-            description=f"Operator {actor.name} initiated execution of action '{action_name}' on '{target_service}' (Attempt: {attempt_id}).",
+            description=f"Operator {actor.name} initiated execution of action '{action_name}' on '{target_service}' ({target_mode.value}) (Attempt: {attempt_id}).",
             payload={
                 "recommendation_id": str(rec.id),
                 "action_name": action_name,
                 "target_service": target_service,
                 "attempt_id": attempt_id,
+                "execution_mode": target_mode.value,
             },
         )
         self.db.commit()
-
-        # 5. Determine execution mode explicitly (REL-02)
-        # Real execution is performed ONLY when real adapter can handle it AND simulated mode is not explicitly forced
-        target_mode = RemediationExecutionMode.REAL
-        if req.execution_mode == RemediationExecutionMode.SIMULATED or not RealMicroserviceExecutionAdapter.can_handle(action_name, target_service):
-            target_mode = RemediationExecutionMode.SIMULATED
 
         # 6. Dispatch execution to adapter
         exec_timestamp = datetime.now(timezone.utc)

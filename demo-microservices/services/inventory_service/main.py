@@ -16,6 +16,7 @@ from common.models import (
     FaultConfig,
     FaultInjectionType,
     InventoryItem,
+    InventoryReleaseRequest,
     InventoryReserveRequest,
     InventoryResponse,
     InventoryStatus,
@@ -105,7 +106,7 @@ async def reserve_inventory(req: InventoryReserveRequest):
             },
         ):
             await _apply_fault_injection()
-            success, reserved, err = inventory_store.reserve(req.items)
+            success, reserved, err = inventory_store.reserve(req.items, order_id=req.order_id)
 
         if not success:
             if ctx:
@@ -134,6 +135,67 @@ async def reserve_inventory(req: InventoryReserveRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Inventory reservation failed: {str(exc)}",
+        )
+
+
+@app.post("/inventory/release", response_model=InventoryResponse, summary="Release reserved inventory for an order")
+async def release_inventory(req: InventoryReleaseRequest):
+    ctx = get_current_context()
+    try:
+        async with start_span(
+            telemetry,
+            operation_name="inventory_store.release",
+            span_kind="internal",
+            attributes={
+                "order_id": req.order_id,
+                "store_type": "in_memory",
+                "reason": req.reason or "payment_failed",
+            },
+        ):
+            await _apply_fault_injection()
+            success, released, err = inventory_store.release(req.order_id, items=req.items)
+
+        if not success:
+            if ctx:
+                telemetry.record_log(
+                    level="WARNING",
+                    message=f"Inventory release rejected for order {req.order_id}: {err}",
+                    request_id=ctx.request_id,
+                    trace_id=ctx.trace_id,
+                    span_id=ctx.span_id,
+                    attributes={"order_id": req.order_id},
+                )
+            if "No reservation found" in (err or ""):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=err,
+                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=err or "Inventory release failed",
+            )
+
+        if ctx:
+            telemetry.record_log(
+                level="INFO",
+                message=f"Inventory reservation released for order {req.order_id} ({len(released)} items restored)",
+                request_id=ctx.request_id,
+                trace_id=ctx.trace_id,
+                span_id=ctx.span_id,
+                attributes={"order_id": req.order_id, "released_count": len(released)},
+            )
+
+        return InventoryResponse(
+            order_id=req.order_id,
+            status=InventoryStatus.RELEASED,
+            released_items=released,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Inventory release failed: {str(exc)}",
         )
 
 

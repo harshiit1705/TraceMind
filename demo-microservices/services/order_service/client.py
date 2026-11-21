@@ -6,6 +6,7 @@ import httpx
 
 from common.config import config
 from common.models import (
+    InventoryReleaseRequest,
     InventoryReserveRequest,
     InventoryResponse,
     PaymentRequest,
@@ -81,6 +82,37 @@ class DownstreamClients:
             except httpx.TimeoutException:
                 span.set_http_status(504)
                 raise DownstreamServiceError("inventory-service", 504, "Inventory reservation timed out")
+            except httpx.RequestError as exc:
+                span.set_http_status(503)
+                raise DownstreamServiceError("inventory-service", 503, f"Inventory unreachable: {str(exc)}")
+            finally:
+                if own:
+                    await client.aclose()
+
+    async def release_inventory(self, req: InventoryReleaseRequest) -> InventoryResponse:
+        client = self._inventory_client or httpx.AsyncClient(base_url=self.inventory_url, timeout=self.timeout)
+        own = client != self._inventory_client
+        async with start_span(
+            self.telemetry,
+            operation_name="HTTP POST inventory-service /inventory/release",
+            span_kind="client",
+            attributes={"target.service": "inventory-service", "order_id": req.order_id},
+        ) as span:
+            headers = get_propagation_headers()
+            try:
+                resp = await client.post("/inventory/release", json=req.model_dump(mode="json"), headers=headers)
+                span.set_http_status(resp.status_code)
+                if resp.status_code != 200:
+                    detail = resp.text
+                    try:
+                        detail = resp.json().get("detail", resp.text)
+                    except Exception:
+                        pass
+                    raise DownstreamServiceError("inventory-service", resp.status_code, detail)
+                return InventoryResponse(**resp.json())
+            except httpx.TimeoutException:
+                span.set_http_status(504)
+                raise DownstreamServiceError("inventory-service", 504, "Inventory release timed out")
             except httpx.RequestError as exc:
                 span.set_http_status(503)
                 raise DownstreamServiceError("inventory-service", 503, f"Inventory unreachable: {str(exc)}")

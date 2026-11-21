@@ -9,7 +9,7 @@ import asyncio
 import logging
 import random
 from contextlib import asynccontextmanager
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException, status
 
@@ -18,6 +18,7 @@ from common.middleware import ObservabilityMiddleware
 from common.models import (
     FaultConfig,
     FaultInjectionType,
+    InventoryReleaseRequest,
     InventoryReserveRequest,
     InventoryStatus,
     OrderCreateRequest,
@@ -106,11 +107,74 @@ async def get_order(order_id: str):
     return order
 
 
+async def _compensate_inventory(order_id: str, items: List[Any], reason: str, ctx=None) -> Dict[str, Any]:
+    """Compensate reserved inventory after downstream payment failure.
+    
+    Returns a dictionary detailing compensation execution:
+    {"attempted": True, "success": bool, "error": Optional[str], "status": Optional[str]}
+    """
+    logger.info("Triggering inventory compensation for order %s (reason: %s)", order_id, reason)
+    if ctx:
+        telemetry.record_log(
+            level="WARNING",
+            message=f"Compensating transaction initiated for order {order_id}: releasing inventory due to {reason}",
+            request_id=ctx.request_id,
+            trace_id=ctx.trace_id,
+            span_id=ctx.span_id,
+            attributes={"order_id": order_id, "compensation_reason": reason},
+        )
+    try:
+        rel_resp = await clients.release_inventory(
+            InventoryReleaseRequest(order_id=order_id, items=items, reason=reason)
+        )
+        if rel_resp.status == InventoryStatus.RELEASED:
+            logger.info("Inventory successfully compensated for order %s", order_id)
+            if ctx:
+                telemetry.record_log(
+                    level="INFO",
+                    message=f"Compensating transaction succeeded for order {order_id}: inventory released",
+                    request_id=ctx.request_id,
+                    trace_id=ctx.trace_id,
+                    span_id=ctx.span_id,
+                    attributes={"order_id": order_id, "compensation_status": "SUCCESS"},
+                )
+            return {"attempted": True, "success": True, "error": None, "status": "RELEASED"}
+        else:
+            err_msg = rel_resp.error_message or "Inventory release returned non-released status"
+            logger.error("Inventory compensation failed for order %s: %s", order_id, err_msg)
+            if ctx:
+                telemetry.record_log(
+                    level="ERROR",
+                    message=f"Compensating transaction failed for order {order_id}: {err_msg}",
+                    request_id=ctx.request_id,
+                    trace_id=ctx.trace_id,
+                    span_id=ctx.span_id,
+                    attributes={"order_id": order_id, "compensation_status": "FAILED"},
+                )
+            return {"attempted": True, "success": False, "error": err_msg, "status": "FAILED"}
+    except Exception as comp_err:
+        err_msg = str(comp_err)
+        logger.error("Inventory compensation error for order %s: %s", order_id, err_msg)
+        if ctx:
+            telemetry.record_log(
+                level="ERROR",
+                message=f"Compensating transaction error for order {order_id}: {err_msg}",
+                request_id=ctx.request_id,
+                trace_id=ctx.trace_id,
+                span_id=ctx.span_id,
+                attributes={"order_id": order_id, "compensation_status": "ERROR"},
+                exception_type=type(comp_err).__name__,
+                exception_message=err_msg,
+            )
+        return {"attempted": True, "success": False, "error": err_msg, "status": "ERROR"}
+
+
 @app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED, summary="Create a new order")
 async def create_order(req: OrderCreateRequest):
     order_id = f"ord-{uuid4().hex[:10]}"
     total_amount = round(sum(item.quantity * item.unit_price for item in req.items), 2)
     ctx = get_current_context()
+    inventory_reserved = False
 
     try:
         # 1. Order Service self-check / fault injection
@@ -135,6 +199,8 @@ async def create_order(req: OrderCreateRequest):
                 detail=f"Inventory reservation failed: {inv_resp.error_message}",
             )
 
+        inventory_reserved = True
+
         # 3. Step 2: Charge payment across downstream Payment Service
         pay_resp = await clients.charge_payment(
             PaymentRequest(
@@ -145,6 +211,13 @@ async def create_order(req: OrderCreateRequest):
             )
         )
         if pay_resp.status != PaymentStatus.SUCCESS:
+            comp_result = await _compensate_inventory(
+                order_id=order_id,
+                items=req.items,
+                reason="payment_rejected",
+                ctx=ctx,
+            )
+            comp_status = "COMPENSATED" if comp_result["success"] else "COMPENSATION_FAILED"
             failed_order = OrderResponse(
                 order_id=order_id,
                 customer_id=req.customer_id,
@@ -152,6 +225,8 @@ async def create_order(req: OrderCreateRequest):
                 total_amount=total_amount,
                 status=OrderStatus.FAILED,
                 error_message=pay_resp.error_message or "Payment charge rejected",
+                compensation_status=comp_status,
+                compensation_error=comp_result.get("error"),
             )
             orders_db[order_id] = failed_order
             raise HTTPException(
@@ -173,6 +248,36 @@ async def create_order(req: OrderCreateRequest):
 
     except DownstreamServiceError as down_err:
         logger.warning("Order %s downstream failure from %s: %s", order_id, down_err.service_name, down_err.message)
+        if inventory_reserved and down_err.service_name == "payment-service":
+            comp_result = await _compensate_inventory(
+                order_id=order_id,
+                items=req.items,
+                reason=f"downstream_payment_failure: {down_err.message}",
+                ctx=ctx,
+            )
+            comp_status = "COMPENSATED" if comp_result["success"] else "COMPENSATION_FAILED"
+            failed_order = OrderResponse(
+                order_id=order_id,
+                customer_id=req.customer_id,
+                items=req.items,
+                total_amount=total_amount,
+                status=OrderStatus.FAILED,
+                error_message=down_err.message,
+                compensation_status=comp_status,
+                compensation_error=comp_result.get("error"),
+            )
+            orders_db[order_id] = failed_order
+        elif not inventory_reserved:
+            failed_order = OrderResponse(
+                order_id=order_id,
+                customer_id=req.customer_id,
+                items=req.items,
+                total_amount=total_amount,
+                status=OrderStatus.FAILED,
+                error_message=down_err.message,
+            )
+            orders_db[order_id] = failed_order
+
         if ctx:
             telemetry.record_log(
                 level="ERROR",
@@ -189,6 +294,28 @@ async def create_order(req: OrderCreateRequest):
     except HTTPException:
         raise
     except Exception as exc:
+        if inventory_reserved:
+            try:
+                comp_result = await _compensate_inventory(
+                    order_id=order_id,
+                    items=req.items,
+                    reason=f"unexpected_error: {str(exc)}",
+                    ctx=ctx,
+                )
+                comp_status = "COMPENSATED" if comp_result["success"] else "COMPENSATION_FAILED"
+                failed_order = OrderResponse(
+                    order_id=order_id,
+                    customer_id=req.customer_id,
+                    items=req.items,
+                    total_amount=total_amount,
+                    status=OrderStatus.FAILED,
+                    error_message=str(exc),
+                    compensation_status=comp_status,
+                    compensation_error=comp_result.get("error"),
+                )
+                orders_db[order_id] = failed_order
+            except Exception:
+                pass
         logger.error("Unhandled exception processing order %s: %s", order_id, str(exc))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

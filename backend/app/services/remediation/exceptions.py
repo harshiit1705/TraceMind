@@ -21,6 +21,11 @@ class ActionNotAllowlistedError(RemediationError):
     pass
 
 
+class UnsupportedExecutionModeError(RemediationError):
+    """Raised when an action cannot be executed in the requested or defaulted execution mode."""
+    pass
+
+
 class AdvisoryRecommendationError(ActionNotAllowlistedError):
     """Raised when execution is attempted on an advisory recommendation with no executable allowlisted action."""
     pass

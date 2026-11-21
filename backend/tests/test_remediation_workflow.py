@@ -68,6 +68,7 @@ from app.services.remediation.exceptions import (
     RemediationExecutionError,
     RemediationNotFoundError,
     RemediationTimeoutError,
+    UnsupportedExecutionModeError,
 )
 from app.services.remediation.service import RemediationService
 
@@ -1353,4 +1354,260 @@ def test_recovery_verification_retry_creates_new_record_preserves_history(db_ses
     history_ids = [h.id for h in history]
     assert v1.id in history_ids
     assert v2.id in history_ids
+
+
+# -----------------------------------------------------------------------------
+# 9. Phase 4.1 / REL-02 Strict Execution Mode Semantics Tests
+# -----------------------------------------------------------------------------
+
+def test_strict_execution_mode_explicit_real_with_supported_action(db_session: Session, test_setup, sre_actor, monkeypatch):
+    """Explicit REAL mode on a supported microservice action uses RealMicroserviceExecutionAdapter."""
+    service = RemediationService(db_session)
+    incident = test_setup["incident"]
+    project = test_setup["project"]
+
+    rec = service.propose_remediation(
+        str(incident.id),
+        RemediationProposeRequest(
+            title="Reset Faults Real Test",
+            description="Testing explicit REAL execution on supported action.",
+            target_service="payment-service",
+            action_name=AllowlistedAction.RESET_SERVICE_FAULTS,
+        ),
+        project_id=project.id,
+        actor=sre_actor,
+    )
+    service.approve_remediation(rec.id, RemediationApproveRequest(), project_id=project.id, actor=sre_actor)
+
+    called_real = False
+
+    def mock_real_exec(action_name, target_service, parameters):
+        nonlocal called_real
+        called_real = True
+        return {
+            "execution_mode": RemediationExecutionMode.REAL.value,
+            "is_simulated": False,
+            "target_service": target_service,
+            "action": action_name,
+            "verified": True,
+        }
+
+    monkeypatch.setattr(RealMicroserviceExecutionAdapter, "execute", mock_real_exec)
+
+    res = service.execute_remediation(
+        rec.id,
+        RemediationExecuteRequest(execution_mode=RemediationExecutionMode.REAL),
+        project_id=project.id,
+        actor=sre_actor,
+    )
+
+    assert called_real is True
+    assert res.execution_mode == RemediationExecutionMode.REAL.value
+    assert res.execution_result_json.get("is_simulated") is False
+    assert res.status == RemediationStatus.EXECUTED
+
+
+def test_strict_execution_mode_explicit_real_with_unsupported_action_rejected(db_session: Session, test_setup, sre_actor, monkeypatch):
+    """Explicit REAL mode on unsupported action must reject with UnsupportedExecutionModeError and preserve state."""
+    service = RemediationService(db_session)
+    incident = test_setup["incident"]
+    project = test_setup["project"]
+
+    rec = service.propose_remediation(
+        str(incident.id),
+        RemediationProposeRequest(
+            title="Restart Service Real Mode Rejection Test",
+            description="Testing explicit REAL execution on unsupported RESTART_SERVICE action.",
+            target_service="payment-service",
+            action_name=AllowlistedAction.RESTART_SERVICE,
+        ),
+        project_id=project.id,
+        actor=sre_actor,
+    )
+    service.approve_remediation(rec.id, RemediationApproveRequest(), project_id=project.id, actor=sre_actor)
+
+    # Ensure neither adapter is called
+    def mock_fail(*args, **kwargs):
+        pytest.fail("Adapter execute should not have been called for rejected mode!")
+
+    monkeypatch.setattr(RealMicroserviceExecutionAdapter, "execute", mock_fail)
+    monkeypatch.setattr(SimulatedExecutionAdapter, "execute", mock_fail)
+
+    with pytest.raises(UnsupportedExecutionModeError) as exc_info:
+        service.execute_remediation(
+            rec.id,
+            RemediationExecuteRequest(execution_mode=RemediationExecutionMode.REAL),
+            project_id=project.id,
+            actor=sre_actor,
+        )
+
+    assert "cannot be executed in REAL mode" in str(exc_info.value)
+
+    # State invariant checks: must remain strictly in APPROVED state, unmutated
+    rec_after = db_session.query(Recommendation).filter(Recommendation.id == rec.id).first()
+    assert rec_after.status == RemediationStatus.APPROVED.value
+    assert rec_after.execution_attempt_id is None
+    assert rec_after.execution_started_at is None
+    assert rec_after.executed_at is None
+    assert rec_after.execution_mode is None
+
+    # Verify no execution audit event was written
+    events = db_session.query(IncidentEvent).filter(
+        IncidentEvent.incident_id == incident.id,
+        IncidentEvent.title.like("%Execution Started%"),
+    ).all()
+    assert len(events) == 0
+
+
+def test_strict_execution_mode_omitted_mode_with_unsupported_action_rejected(db_session: Session, test_setup, sre_actor, monkeypatch):
+    """Omitted execution_mode on unsupported action must NOT silently fall back to SIMULATED; it must reject."""
+    service = RemediationService(db_session)
+    incident = test_setup["incident"]
+    project = test_setup["project"]
+
+    rec = service.propose_remediation(
+        str(incident.id),
+        RemediationProposeRequest(
+            title="Scale Replicas Omitted Mode Rejection Test",
+            description="Testing omitted execution mode on SCALE_REPLICAS action.",
+            target_service="order-service",
+            action_name=AllowlistedAction.SCALE_REPLICAS,
+        ),
+        project_id=project.id,
+        actor=sre_actor,
+    )
+    service.approve_remediation(rec.id, RemediationApproveRequest(), project_id=project.id, actor=sre_actor)
+
+    def mock_fail(*args, **kwargs):
+        pytest.fail("Adapter execute should not have been called for rejected mode!")
+
+    monkeypatch.setattr(RealMicroserviceExecutionAdapter, "execute", mock_fail)
+    monkeypatch.setattr(SimulatedExecutionAdapter, "execute", mock_fail)
+
+    with pytest.raises(UnsupportedExecutionModeError) as exc_info:
+        service.execute_remediation(
+            rec.id,
+            RemediationExecuteRequest(),  # execution_mode is None
+            project_id=project.id,
+            actor=sre_actor,
+        )
+
+    assert "is not supported for real microservice execution" in str(exc_info.value)
+    assert "explicitly specify execution_mode='SIMULATED'" in str(exc_info.value)
+
+    # State invariant checks
+    rec_after = db_session.query(Recommendation).filter(Recommendation.id == rec.id).first()
+    assert rec_after.status == RemediationStatus.APPROVED.value
+    assert rec_after.execution_attempt_id is None
+    assert rec_after.execution_started_at is None
+
+
+def test_strict_execution_mode_omitted_mode_with_supported_action_defaults_to_real(db_session: Session, test_setup, sre_actor, monkeypatch):
+    """Omitted execution_mode on supported action defaults to REAL."""
+    service = RemediationService(db_session)
+    incident = test_setup["incident"]
+    project = test_setup["project"]
+
+    rec = service.propose_remediation(
+        str(incident.id),
+        RemediationProposeRequest(
+            title="Reset Faults Omitted Mode Test",
+            description="Testing omitted execution mode on supported action defaults to REAL.",
+            target_service="inventory-service",
+            action_name=AllowlistedAction.RESET_SERVICE_FAULTS,
+        ),
+        project_id=project.id,
+        actor=sre_actor,
+    )
+    service.approve_remediation(rec.id, RemediationApproveRequest(), project_id=project.id, actor=sre_actor)
+
+    called_real = False
+
+    def mock_real_exec(action_name, target_service, parameters):
+        nonlocal called_real
+        called_real = True
+        return {
+            "execution_mode": RemediationExecutionMode.REAL.value,
+            "is_simulated": False,
+            "target_service": target_service,
+            "action": action_name,
+            "verified": True,
+        }
+
+    monkeypatch.setattr(RealMicroserviceExecutionAdapter, "execute", mock_real_exec)
+
+    res = service.execute_remediation(
+        rec.id,
+        RemediationExecuteRequest(),  # execution_mode is None
+        project_id=project.id,
+        actor=sre_actor,
+    )
+
+    assert called_real is True
+    assert res.execution_mode == RemediationExecutionMode.REAL.value
+    assert res.execution_result_json.get("is_simulated") is False
+    assert res.status == RemediationStatus.EXECUTED
+
+
+def test_strict_execution_mode_explicit_simulated_for_unsupported_action(db_session: Session, test_setup, sre_actor):
+    """Explicit SIMULATED mode for unsupported action uses SimulatedExecutionAdapter and succeeds."""
+    service = RemediationService(db_session)
+    incident = test_setup["incident"]
+    project = test_setup["project"]
+
+    rec = service.propose_remediation(
+        str(incident.id),
+        RemediationProposeRequest(
+            title="Restart Service Explicit Simulated Test",
+            description="Testing explicit SIMULATED mode.",
+            target_service="order-service",
+            action_name=AllowlistedAction.RESTART_SERVICE,
+        ),
+        project_id=project.id,
+        actor=sre_actor,
+    )
+    service.approve_remediation(rec.id, RemediationApproveRequest(), project_id=project.id, actor=sre_actor)
+
+    res = service.execute_remediation(
+        rec.id,
+        RemediationExecuteRequest(execution_mode=RemediationExecutionMode.SIMULATED),
+        project_id=project.id,
+        actor=sre_actor,
+    )
+
+    assert res.execution_mode == RemediationExecutionMode.SIMULATED.value
+    assert res.execution_result_json.get("is_simulated") is True
+    assert res.status == RemediationStatus.EXECUTED
+
+
+def test_strict_execution_mode_api_returns_400_for_unsupported_mode(client, db_session: Session, test_setup, sre_actor):
+    """API endpoint returns HTTP 400 Bad Request when UnsupportedExecutionModeError is raised."""
+    service = RemediationService(db_session)
+    incident = test_setup["incident"]
+    project = test_setup["project"]
+
+    rec = service.propose_remediation(
+        str(incident.id),
+        RemediationProposeRequest(
+            title="API Unsupported Mode Test",
+            description="Testing API 400 response on unsupported mode.",
+            target_service="payment-service",
+            action_name=AllowlistedAction.DRAIN_TRAFFIC,
+        ),
+        project_id=project.id,
+        actor=sre_actor,
+    )
+    service.approve_remediation(rec.id, RemediationApproveRequest(), project_id=project.id, actor=sre_actor)
+
+    response = client.post(
+        f"/api/v1/remediations/{rec.id}/execute",
+        json={"execution_mode": "REAL"},
+        params={"project_id": str(project.id)},
+        headers={"Authorization": "Bearer tracemind-sre-token"},
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "cannot be executed in REAL mode" in detail
+
 
