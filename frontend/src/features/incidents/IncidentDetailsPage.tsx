@@ -17,9 +17,15 @@ import {
 import {
   executeProposeFaultReset,
   resolveIncidentProjectId,
+  hasActiveFaultResetRemediation,
   type ProposeFaultResetParams,
 } from './remediationHandler';
-export { executeProposeFaultReset, resolveIncidentProjectId, type ProposeFaultResetParams };
+export {
+  executeProposeFaultReset,
+  resolveIncidentProjectId,
+  hasActiveFaultResetRemediation,
+  type ProposeFaultResetParams,
+};
 
 export const IncidentDetailsPage: React.FC = () => {
   const { incidentId = 'INC-8492' } = useParams<{ incidentId: string }>();
@@ -48,6 +54,7 @@ export const IncidentDetailsPage: React.FC = () => {
   }>({ operatorName: 'Alex Chen (Staff SRE)', notesOrReason: '' });
   const [remediationError, setRemediationError] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<boolean>(false);
+  const hasActiveFaultReset = hasActiveFaultResetRemediation(remediations);
 
   // Phase 5 Recovery Verification State
   const [verificationsByRemediation, setVerificationsByRemediation] = useState<Record<string, RecoveryVerificationResponse>>({});
@@ -818,7 +825,28 @@ export const IncidentDetailsPage: React.FC = () => {
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {!hasActiveFaultReset && remediations.length > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="add_task"
+                  onClick={async () => {
+                    await executeProposeFaultReset({
+                      incident,
+                      api: apiClient,
+                      remediations,
+                      setActionInProgress,
+                      setRemediationError,
+                      setRemediations,
+                      loadTimeline,
+                    });
+                  }}
+                  disabled={actionInProgress}
+                >
+                  Propose Fault Reset Action
+                </Button>
+              )}
               <span className="px-2.5 py-1 rounded bg-error-container text-on-error-container font-mono-badge text-mono-badge font-semibold tracking-wide uppercase">
                 HUMAN APPROVAL REQUIRED
               </span>
@@ -882,6 +910,7 @@ export const IncidentDetailsPage: React.FC = () => {
                   await executeProposeFaultReset({
                     incident,
                     api: apiClient,
+                    remediations,
                     setActionInProgress,
                     setRemediationError,
                     setRemediations,
@@ -895,6 +924,37 @@ export const IncidentDetailsPage: React.FC = () => {
             </div>
           ) : (
             <div className="flex flex-col gap-space-md">
+              {!hasActiveFaultReset && (
+                <div className="p-space-md rounded-lg bg-surface-container-low/50 border border-outline-variant/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-space-sm">
+                  <div className="flex flex-col gap-1">
+                    <span className="font-body-medium text-body-medium font-semibold text-on-surface">
+                      Propose New Fault Reset Action
+                    </span>
+                    <span className="font-caption-ui text-caption-ui text-on-surface-variant">
+                      Previous remediation actions were concluded or rejected. You can propose an allowlisted fault reset action for payment-service.
+                    </span>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon="add_task"
+                    onClick={async () => {
+                      await executeProposeFaultReset({
+                        incident,
+                        api: apiClient,
+                        remediations,
+                        setActionInProgress,
+                        setRemediationError,
+                        setRemediations,
+                        loadTimeline,
+                      });
+                    }}
+                    disabled={actionInProgress}
+                  >
+                    Propose Fault Reset Action
+                  </Button>
+                </div>
+              )}
               {remediations.map((rem) => {
                 const isActionActive = activeRemediationAction?.id === rem.id;
                 const actionType = activeRemediationAction?.type;
