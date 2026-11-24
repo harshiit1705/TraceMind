@@ -14,7 +14,7 @@ export interface ApiError {
   details?: Record<string, unknown>;
 }
 
-export type HealthStatus = 'healthy' | 'degraded' | 'unhealthy';
+export type HealthStatus = 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
 export type SeverityLevel = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface MetricSummary {

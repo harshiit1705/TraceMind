@@ -112,6 +112,7 @@ class MetricSampleResponse(BaseModel):
     service_id: UUID
     service_slug: Optional[str] = None
     service_name: Optional[str] = None
+    service_identifier: Optional[str] = None
     metric_name: str
     metric_unit: str
     value: float
@@ -221,6 +222,7 @@ class ApplicationLogResponse(BaseModel):
     service_id: UUID
     service_slug: Optional[str] = None
     service_name: Optional[str] = None
+    service_identifier: Optional[str] = None
     timestamp: datetime
     level: str
     message: str

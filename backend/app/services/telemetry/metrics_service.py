@@ -265,6 +265,7 @@ class MetricsService:
             dto = MetricSampleResponse.model_validate(r)
             dto.service_slug = svc.slug if svc else None
             dto.service_name = svc.name if svc else None
+            dto.service_identifier = (svc.identifier or svc.slug) if svc else None
             items.append(dto)
 
         return items, total

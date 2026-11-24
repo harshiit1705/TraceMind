@@ -63,12 +63,16 @@ function mapBackendServiceToItem(raw: any): ServiceItem {
   if (!raw) return raw;
   const meta = (raw.metadata_json && typeof raw.metadata_json === 'object') ? raw.metadata_json : {};
   const tierVal = typeof raw.tier === 'number' && (raw.tier === 0 || raw.tier === 1 || raw.tier === 2) ? raw.tier : 1;
+  const rawStatus = raw.status ? String(raw.status).toLowerCase() : 'unknown';
+  const status: ServiceItem['status'] = (rawStatus === 'healthy' || rawStatus === 'degraded' || rawStatus === 'unhealthy')
+    ? rawStatus
+    : 'unknown';
   return {
     id: String(raw.id || ''),
     name: raw.name || '',
     identifier: raw.identifier || raw.slug || '',
     tier: tierVal as ServiceItem['tier'],
-    status: (raw.status || 'healthy').toLowerCase() as ServiceItem['status'],
+    status,
     environment: raw.environment || 'production',
     ownerTeam: raw.ownerTeam ?? raw.owner_team ?? 'Platform',
     requestRateRps: Number(raw.requestRateRps ?? raw.request_rate_rps ?? 0),
@@ -78,9 +82,11 @@ function mapBackendServiceToItem(raw: any): ServiceItem {
     lastDeployment: raw.lastDeployment ?? raw.last_deployment ?? meta.last_deployment ?? 'Active',
     availabilityPercent: raw.availabilityPercent ?? meta.availability_percent,
     cpuSaturationPercent: raw.cpuSaturationPercent ?? raw.cpu_usage_percent ?? meta.cpu_saturation_percent,
-    memoryUsagePercent: raw.memoryUsagePercent ?? raw.memory_usage_mb ?? meta.memory_usage_percent,
+    memoryUsagePercent: raw.memoryUsagePercent ?? meta.memory_usage_percent,
     upstreamDependencies: raw.upstreamDependencies ?? meta.upstream_dependencies,
     downstreamDependencies: raw.downstreamDependencies ?? meta.downstream_dependencies,
+    projectId: raw.project_id || raw.projectId,
+    project_id: raw.project_id || raw.projectId,
   };
 }
 
@@ -143,8 +149,17 @@ class ApiClient {
   })();
 
   constructor() {
-    const envMode = import.meta.env.VITE_DATA_MODE as string;
-    this.dataMode = envMode === 'api' ? 'api' : 'mock';
+    const envMode = (import.meta.env.VITE_DATA_MODE as string | undefined)?.trim().toLowerCase();
+    // Strict API mode enforcement:
+    // If explicitly 'mock', use mock mode.
+    // If 'api' or omitted, default strictly to 'api'.
+    // If set to an invalid value, do not silently switch to mock mode; enforce 'api'.
+    if (envMode && envMode !== 'api' && envMode !== 'mock') {
+      console.warn(`[ApiClient] Invalid VITE_DATA_MODE="${envMode}". Expected 'api' or 'mock'. Enforcing strict 'api' mode.`);
+      this.dataMode = 'api';
+    } else {
+      this.dataMode = envMode === 'mock' ? 'mock' : 'api';
+    }
     this.baseUrl = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:8000';
   }
 
@@ -275,21 +290,33 @@ class ApiClient {
     return this.request<ProjectItem[]>('/api/v1/projects', MOCK_PROJECTS);
   }
 
-  public async getTelemetryOverview(timeRange: '15m' | '1h' | '24h' = '15m'): Promise<ApiResponse<TelemetryOverviewData>> {
+  public async getTelemetryOverview(
+    timeRange: '15m' | '1h' | '24h' = '15m',
+    projectId?: string
+  ): Promise<ApiResponse<TelemetryOverviewData>> {
     const fallback = MOCK_TELEMETRY_SERIES[timeRange] || MOCK_TELEMETRY_SERIES['15m'];
-    return this.request<TelemetryOverviewData>(`/api/v1/telemetry/overview?range=${timeRange}`, fallback);
+    const qs = new URLSearchParams();
+    qs.set('range', timeRange);
+    if (projectId) qs.set('project_id', projectId);
+    return this.request<TelemetryOverviewData>(`/api/v1/telemetry/overview?${qs.toString()}`, fallback);
   }
 
-  public async getServices(): Promise<ApiResponse<ServiceItem[]>> {
-    const rawRes = await this.request<any[]>('/api/v1/services', MOCK_SERVICES);
+  public async getServices(projectId?: string): Promise<ApiResponse<ServiceItem[]>> {
+    const endpoint = projectId
+      ? `/api/v1/services?project_id=${encodeURIComponent(projectId)}`
+      : '/api/v1/services';
+    const rawRes = await this.request<any[]>(endpoint, MOCK_SERVICES);
     return {
       ...rawRes,
       data: Array.isArray(rawRes.data) ? rawRes.data.map(mapBackendServiceToItem) : [],
     };
   }
 
-  public async getServicesOverviewStats(): Promise<ApiResponse<ServicesOverviewStats>> {
-    return this.request<ServicesOverviewStats>('/api/v1/services/stats', MOCK_SERVICES_STATS);
+  public async getServicesOverviewStats(projectId?: string): Promise<ApiResponse<ServicesOverviewStats>> {
+    const endpoint = projectId
+      ? `/api/v1/services/stats?project_id=${encodeURIComponent(projectId)}`
+      : '/api/v1/services/stats';
+    return this.request<ServicesOverviewStats>(endpoint, MOCK_SERVICES_STATS);
   }
 
   public async getServiceById(id: string): Promise<ApiResponse<ServiceItem | null>> {
@@ -430,8 +457,12 @@ class ApiClient {
     };
   }
 
-  public async getIncidents(): Promise<ApiResponse<IncidentItem[]>> {
-    const rawRes = await this.request<any>('/api/v1/incidents', MOCK_INCIDENTS);
+  public async getIncidents(projectId?: string, limit: number = 100): Promise<ApiResponse<IncidentItem[]>> {
+    const qs = new URLSearchParams();
+    if (projectId) qs.set('project_id', projectId);
+    if (limit) qs.set('limit', String(limit));
+    const endpoint = `/api/v1/incidents?${qs.toString()}`;
+    const rawRes = await this.request<any>(endpoint, MOCK_INCIDENTS);
     let itemsList: IncidentItem[] = [];
     if (Array.isArray(rawRes.data)) {
       itemsList = rawRes.data.map(mapBackendIncidentToItem);
@@ -444,8 +475,11 @@ class ApiClient {
     };
   }
 
-  public async getIncidentsKpiStats(): Promise<ApiResponse<IncidentsKpiStats>> {
-    return this.request<IncidentsKpiStats>('/api/v1/incidents/stats', MOCK_INCIDENTS_KPI_STATS);
+  public async getIncidentsKpiStats(projectId?: string): Promise<ApiResponse<IncidentsKpiStats>> {
+    const endpoint = projectId
+      ? `/api/v1/incidents/stats?project_id=${encodeURIComponent(projectId)}`
+      : '/api/v1/incidents/stats';
+    return this.request<IncidentsKpiStats>(endpoint, MOCK_INCIDENTS_KPI_STATS);
   }
 
   public async getIncidentById(id: string): Promise<ApiResponse<IncidentItem | null>> {
@@ -617,6 +651,14 @@ class ApiClient {
     id?: string
   ): Promise<ApiResponse<GroundedInvestigationResponse | AiInvestigationSummary>> {
     if (!id) {
+      if (this.dataMode === 'api') {
+        const err: ApiError = {
+          message: 'Investigation ID is required in API mode',
+          code: 'INVALID_INVESTIGATION_ID',
+          status: 400,
+        };
+        throw err;
+      }
       return {
         data: MOCK_GROUNDED_INVESTIGATION,
         source: this.dataMode,

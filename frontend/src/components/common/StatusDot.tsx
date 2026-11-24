@@ -20,12 +20,13 @@ export const StatusDot: React.FC<StatusDotProps> = ({
     lg: 'w-2.5 h-2.5',
   };
 
-  const colorMap = {
+  const colorMap: Record<HealthStatus | 'critical' | 'normal', string> = {
     healthy: 'bg-primary-container',
     normal: 'bg-primary-container',
     degraded: 'bg-secondary',
     unhealthy: 'bg-error',
     critical: 'bg-error',
+    unknown: 'bg-outline',
   };
 
   const dotSize = sizeMap[size];

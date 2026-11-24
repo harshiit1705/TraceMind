@@ -87,6 +87,7 @@ def test_logs_ingest_secret_redaction_and_filtering(client: TestClient, db_sessi
     assert by_level.status_code == 200
     assert by_level.json()["total"] == 1
     assert by_level.json()["items"][0]["service_slug"] == "order-service"
+    assert by_level.json()["items"][0]["service_identifier"] == "svc:order-orchestration"
 
     by_search = client.get(f"/api/v1/logs?project_id={proj.id}&search=ord-123")
     assert by_search.status_code == 200

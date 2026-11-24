@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer,
@@ -14,44 +14,125 @@ import {
 import { PageHeader } from '../../components/layout/PageHeader';
 import { KpiCard, Button, LoadingSpinner, ErrorState } from '../../components/common';
 import { apiClient } from '../../services/apiClient';
-import { ServiceItem, IncidentItem, TelemetryOverviewData } from '../../types';
+import { ServiceItem, IncidentItem, TelemetryOverviewData, ProjectItem } from '../../types';
 
 export const OverviewPage: React.FC = () => {
   const navigate = useNavigate();
 
   const [timeRange, setTimeRange] = useState<'15m' | '1h' | '24h'>('15m');
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(null);
   const [telemetry, setTelemetry] = useState<TelemetryOverviewData | null>(null);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [incidents, setIncidents] = useState<IncidentItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<{ message: string; details?: Record<string, unknown> } | null>(null);
+  const [liveStreamActive, setLiveStreamActive] = useState<boolean>(true);
 
   // Table filter states
   const [serviceSearch, setServiceSearch] = useState<string>('');
   const [serviceFilter, setServiceFilter] = useState<'all' | 'issues'>('all');
 
+  // Race condition & in-flight request tracking
+  const activeRequestIdRef = useRef<number>(0);
+  const isFetchingRef = useRef<boolean>(false);
+
+  // Fetch overview telemetry and entities for a given project
+  const fetchOverviewData = useCallback(async (projectId?: string, silent: boolean = false) => {
+    if (!projectId) return;
+
+    // Prevent overlapping requests from background polling ticks
+    if (silent && isFetchingRef.current) {
+      return;
+    }
+
+    const currentReqId = ++activeRequestIdRef.current;
+    isFetchingRef.current = true;
+
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
+    try {
+      const [telemetryRes, servicesRes, incidentsRes] = await Promise.all([
+        apiClient.getTelemetryOverview(timeRange, projectId),
+        apiClient.getServices(projectId),
+        apiClient.getIncidents(projectId, 100),
+      ]);
+
+      // If a newer project selection or fetch was initiated while this request was in-flight,
+      // discard this stale response immediately.
+      if (currentReqId !== activeRequestIdRef.current) {
+        return;
+      }
+
+      setTelemetry(telemetryRes.data);
+      setServices(servicesRes.data || []);
+      setIncidents(incidentsRes.data || []);
+      setError(null);
+    } catch (err: unknown) {
+      if (currentReqId !== activeRequestIdRef.current) {
+        return;
+      }
+      const e = err as { message?: string; details?: Record<string, unknown> };
+      setError({
+        message: e.message || 'Failed to load overview monitoring metrics',
+        details: e.details,
+      });
+    } finally {
+      if (currentReqId === activeRequestIdRef.current) {
+        isFetchingRef.current = false;
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    }
+  }, [timeRange]);
+
+  // Project selection helper:
+  // - Prefers Core E-Commerce & Payments / core-ecommerce if present
+  // - If single project, selects it
+  // - If multiple projects exist but preferred is absent, does NOT silently select an arbitrary first project
+  const selectAppropriateProject = useCallback((projs: ProjectItem[]) => {
+    if (projs.length === 0) {
+      setSelectedProject(null);
+      return;
+    }
+    const preferred = projs.find(
+      (p) => p.slug === 'core-ecommerce' || p.name.toLowerCase().includes('core e-commerce')
+    );
+    if (preferred) {
+      setSelectedProject(preferred);
+    } else if (projs.length === 1) {
+      setSelectedProject(projs[0]);
+    } else {
+      // Multiple projects exist without the preferred core-ecommerce project:
+      // Require explicit user selection rather than silently defaulting to an arbitrary first project.
+      setSelectedProject(null);
+    }
+  }, []);
+
+  // Initial mount: load projects, then apply project selection policy
   useEffect(() => {
     let mounted = true;
     setLoading(true);
     setError(null);
 
-    Promise.all([
-      apiClient.getTelemetryOverview(timeRange),
-      apiClient.getServices(),
-      apiClient.getIncidents(),
-    ])
-      .then(([telemetryRes, servicesRes, incidentsRes]) => {
+    apiClient.getProjects()
+      .then((res) => {
         if (!mounted) return;
-        setTelemetry(telemetryRes.data);
-        setServices(servicesRes.data);
-        setIncidents(incidentsRes.data);
-        setLoading(false);
+        const projs = res.data || [];
+        setProjects(projs);
+        selectAppropriateProject(projs);
+        if (projs.length === 0) {
+          setLoading(false);
+        }
       })
       .catch((err: unknown) => {
         if (!mounted) return;
         const e = err as { message?: string; details?: Record<string, unknown> };
         setError({
-          message: e.message || 'Failed to load overview monitoring metrics',
+          message: e.message || 'Failed to fetch project context from backend',
           details: e.details,
         });
         setLoading(false);
@@ -60,16 +141,84 @@ export const OverviewPage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [timeRange]);
+  }, [selectAppropriateProject]);
 
-  // Dynamic Fleet & Incident counts
+  // Fetch metrics when selected project or time range changes
+  useEffect(() => {
+    if (!selectedProject) return;
+    fetchOverviewData(selectedProject.id, false);
+  }, [selectedProject, fetchOverviewData]);
+
+  // Polling stream: auto-refreshes data every 30 seconds when live stream is active
+  useEffect(() => {
+    if (!liveStreamActive || !selectedProject) return;
+
+    const intervalId = setInterval(() => {
+      fetchOverviewData(selectedProject.id, true);
+    }, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [liveStreamActive, selectedProject, fetchOverviewData]);
+
+  const handleRetry = () => {
+    if (selectedProject) {
+      fetchOverviewData(selectedProject.id, false);
+    } else {
+      setLoading(true);
+      setError(null);
+      apiClient.getProjects()
+        .then((res) => {
+          const projs = res.data || [];
+          setProjects(projs);
+          selectAppropriateProject(projs);
+          if (projs.length === 0) {
+            setLoading(false);
+          }
+        })
+        .catch((err: unknown) => {
+          const e = err as { message?: string; details?: Record<string, unknown> };
+          setError({
+            message: e.message || 'Failed to fetch project context',
+            details: e.details,
+          });
+          setLoading(false);
+        });
+    }
+  };
+
+  // Fleet counts
   const healthyCount = useMemo(() => services.filter((s) => s.status === 'healthy').length, [services]);
   const degradedCount = useMemo(() => services.filter((s) => s.status === 'degraded').length, [services]);
   const unhealthyCount = useMemo(() => services.filter((s) => s.status === 'unhealthy').length, [services]);
-  const totalFleetCount = services.length || 10;
+  const unknownCount = useMemo(() => services.filter((s) => s.status === 'unknown').length, [services]);
+  const totalFleetCount = services.length;
 
-  const activeIncidents = useMemo(() => incidents.filter((i) => i.status !== 'RESOLVED'), [incidents]);
-  const criticalActiveIncidents = useMemo(() => activeIncidents.filter((i) => i.severity === 'CRITICAL'), [activeIncidents]);
+  // Incident lifecycle semantics:
+  // - Actively escalating / impacting: DETECTED, INVESTIGATING, ACKNOWLEDGED
+  // - Mitigated (recovery verification underway, impact mitigated): MITIGATED
+  // - Terminal / Inactive: RESOLVED, CLOSED
+  const activeEscalatingIncidents = useMemo(() => {
+    return incidents.filter((i) => {
+      const s = (i.status || '').toUpperCase();
+      return s === 'DETECTED' || s === 'INVESTIGATING' || s === 'ACKNOWLEDGED';
+    });
+  }, [incidents]);
+
+  const mitigatedIncidents = useMemo(() => {
+    return incidents.filter((i) => (i.status || '').toUpperCase() === 'MITIGATED');
+  }, [incidents]);
+
+  const openIncidents = useMemo(() => {
+    return incidents.filter((i) => {
+      const s = (i.status || '').toUpperCase();
+      return s !== 'RESOLVED' && s !== 'CLOSED';
+    });
+  }, [incidents]);
+
+  const criticalActiveIncidents = useMemo(
+    () => activeEscalatingIncidents.filter((i) => (i.severity || '').toUpperCase() === 'CRITICAL'),
+    [activeEscalatingIncidents]
+  );
 
   // Filtered services for the fleet table
   const filteredServices = useMemo(() => {
@@ -79,7 +228,7 @@ export const OverviewPage: React.FC = () => {
         svc.identifier.toLowerCase().includes(serviceSearch.toLowerCase());
       if (!matchesSearch) return false;
       if (serviceFilter === 'issues') {
-        return svc.status === 'degraded' || svc.status === 'unhealthy';
+        return svc.status === 'degraded' || svc.status === 'unhealthy' || svc.status === 'unknown';
       }
       return true;
     });
@@ -92,15 +241,16 @@ export const OverviewPage: React.FC = () => {
     return `${num.toFixed(1)} req/s`;
   };
 
+  const isThroughputAvailable = Boolean(telemetry?.throughputAvailable);
   const requestRateDisplay =
-    telemetry?.requestRateStatus === 'insufficient_data'
+    !isThroughputAvailable || telemetry?.requestRateStatus === 'insufficient_data'
       ? 'Insufficient data'
       : telemetry?.requestRateStatus === 'no_traffic'
       ? '0.0 req/s'
       : formatRps(telemetry?.currentThroughputRps);
 
   const requestRateSubtitle =
-    telemetry?.requestRateStatus === 'insufficient_data'
+    !isThroughputAvailable || telemetry?.requestRateStatus === 'insufficient_data'
       ? 'Need >=1s span or request_rate sample'
       : telemetry?.requestRateStatus === 'no_traffic'
       ? 'No application requests in window'
@@ -112,12 +262,21 @@ export const OverviewPage: React.FC = () => {
     return Math.round(Math.max(...pts.map((p) => Number(p.p99Ms ?? 0))));
   }, [telemetry]);
 
-  const overallHealthLabel =
-    unhealthyCount > 0 ? 'Unhealthy' : degradedCount > 0 ? 'Degraded' : 'Healthy';
-  const primaryActiveIncident = activeIncidents[0] || null;
-  const warRoomTargetId = primaryActiveIncident?.id || incidents[0]?.id || 'INC-8492';
+  const overallHealthLabel = useMemo(() => {
+    if (totalFleetCount === 0) return 'No Services';
+    if (unhealthyCount > 0) return 'Unhealthy';
+    if (degradedCount > 0) return 'Degraded';
+    if (unknownCount > 0 && healthyCount === 0) return 'Unknown';
+    return 'Healthy';
+  }, [totalFleetCount, unhealthyCount, degradedCount, unknownCount, healthyCount]);
 
-  if (loading && !telemetry) {
+  const primaryActiveIncident = activeEscalatingIncidents[0] || null;
+  const warRoomTargetId =
+    activeEscalatingIncidents[0]?.id ||
+    mitigatedIncidents[0]?.id ||
+    (openIncidents[0]?.id ?? null);
+
+  if (loading && !telemetry && services.length === 0) {
     return (
       <div className="w-full px-margin-desktop py-margin-desktop">
         <LoadingSpinner message="Aggregating live cluster telemetry and active incident stream..." fullScreen />
@@ -125,15 +284,81 @@ export const OverviewPage: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (error && !telemetry && services.length === 0) {
     return (
       <div className="w-full px-margin-desktop py-margin-desktop">
         <ErrorState
           title="Telemetry Ingestion Error"
           message={error.message}
           details={error.details}
-          onRetry={() => setTimeRange(timeRange)}
+          onRetry={handleRetry}
         />
+      </div>
+    );
+  }
+
+  if (!loading && projects.length === 0) {
+    return (
+      <div className="w-full px-margin-desktop py-margin-desktop space-y-space-lg">
+        <PageHeader
+          category="Observability Command"
+          categoryIcon="monitoring"
+          title="Overview"
+          subtitle="Monitor your application's health, latency, and active incidents in real time."
+        />
+        <div className="p-space-lg rounded-xl bg-surface-container-lowest border border-outline-variant/30 text-center space-y-space-sm">
+          <span className="material-symbols-outlined text-[36px] text-outline">folder_off</span>
+          <h3 className="font-headline-sm text-headline-sm text-on-surface font-semibold">No Monitored Projects Found</h3>
+          <p className="font-body-default text-body-default text-on-surface-variant max-w-md mx-auto">
+            No projects are currently registered in TraceMind. Connect your telemetry pipelines or create a project to start monitoring.
+          </p>
+          <Button variant="primary" icon="refresh" onClick={handleRetry}>
+            Check Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!loading && projects.length > 1 && !selectedProject) {
+    return (
+      <div className="w-full px-margin-desktop py-margin-desktop space-y-space-lg">
+        <PageHeader
+          category="Observability Command"
+          categoryIcon="monitoring"
+          title="Overview"
+          subtitle="Monitor your application's health, latency, and active incidents in real time."
+          actions={
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container border border-outline-variant/30 text-caption-ui font-caption-ui text-on-surface">
+              <span className="material-symbols-outlined text-[16px] text-primary">folder_open</span>
+              <select
+                value=""
+                onChange={(e) => {
+                  const found = projects.find((p) => p.id === e.target.value);
+                  if (found) setSelectedProject(found);
+                }}
+                className="bg-transparent border-none text-on-surface text-caption-ui font-caption-ui focus:outline-none cursor-pointer"
+                aria-label="Select Project"
+              >
+                <option value="" disabled className="bg-surface-container text-on-surface">
+                  -- Select a Project --
+                </option>
+                {projects.map((proj) => (
+                  <option key={proj.id} value={proj.id} className="bg-surface-container text-on-surface">
+                    {proj.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          }
+        />
+        <div className="p-space-lg rounded-xl bg-surface-container-lowest border border-outline-variant/30 text-center space-y-space-sm">
+          <span className="material-symbols-outlined text-[36px] text-primary">domain</span>
+          <h3 className="font-headline-sm text-headline-sm text-on-surface font-semibold">Select a Monitored Project</h3>
+          <p className="font-body-default text-body-default text-on-surface-variant max-w-md mx-auto">
+            Multiple projects are registered. Please select a project from the header dropdown to view its telemetry, services, and incidents.
+          </p>
+        </div>
       </div>
     );
   }
@@ -146,14 +371,48 @@ export const OverviewPage: React.FC = () => {
         categoryIcon="monitoring"
         title="Overview"
         titleBadge={
-          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-mono-badge text-mono-badge uppercase tracking-wider font-semibold">
-            <span className="w-1.5 h-1.5 rounded-full bg-error animate-ping" />
-            Incident Mode Active
-          </span>
+          activeEscalatingIncidents.length > 0 ? (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-mono-badge text-mono-badge uppercase tracking-wider font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-error animate-ping" />
+              Incident Mode Active
+            </span>
+          ) : mitigatedIncidents.length > 0 ? (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-mono-badge text-mono-badge uppercase tracking-wider font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-tertiary" />
+              Mitigated · Recovery
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-fixed font-mono-badge text-mono-badge uppercase tracking-wider font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+              Normal Operations
+            </span>
+          )
         }
         subtitle="Monitor your application's health, latency, and active incidents in real time."
         actions={
           <>
+            {/* Project Context Selector */}
+            {projects.length > 0 && (
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container border border-outline-variant/30 text-caption-ui font-caption-ui text-on-surface">
+                <span className="material-symbols-outlined text-[16px] text-primary">folder_open</span>
+                <select
+                  value={selectedProject?.id || ''}
+                  onChange={(e) => {
+                    const found = projects.find((p) => p.id === e.target.value);
+                    if (found) setSelectedProject(found);
+                  }}
+                  className="bg-transparent border-none text-on-surface text-caption-ui font-caption-ui focus:outline-none cursor-pointer"
+                  aria-label="Select Project"
+                >
+                  {projects.map((proj) => (
+                    <option key={proj.id} value={proj.id} className="bg-surface-container text-on-surface">
+                      {proj.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Time-Range Selector */}
             <div className="inline-flex items-center bg-surface-container rounded-lg p-0.5 border border-outline-variant/30 text-caption-ui font-caption-ui">
               {(['15m', '1h', '24h'] as const).map((r) => (
@@ -172,23 +431,36 @@ export const OverviewPage: React.FC = () => {
               ))}
             </div>
 
-            <div className="inline-flex items-center gap-2 px-space-sm py-1.5 rounded-lg bg-surface-container text-on-surface font-mono-caption text-mono-caption">
-              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <span>Live Stream: ON (30s)</span>
-            </div>
+            {/* Live Polling Stream Status Toggle */}
+            <button
+              type="button"
+              onClick={() => setLiveStreamActive(!liveStreamActive)}
+              className="inline-flex items-center gap-2 px-space-sm py-1.5 rounded-lg bg-surface-container text-on-surface font-mono-caption text-mono-caption hover:bg-surface-container-high transition-colors cursor-pointer"
+              title={liveStreamActive ? 'Click to pause auto-refresh' : 'Click to resume 30s auto-refresh'}
+            >
+              <span className={`w-2 h-2 rounded-full ${liveStreamActive ? 'bg-primary animate-pulse' : 'bg-outline'}`} />
+              <span>Live Stream: {liveStreamActive ? 'ON (30s)' : 'PAUSED'}</span>
+            </button>
 
             <Button
               variant="secondary"
               icon="crisis_alert"
               onClick={() => navigate('/incidents')}
             >
-              Incidents ({activeIncidents.length})
+              Incidents ({openIncidents.length})
             </Button>
 
             <Button
               variant="primary"
               icon="auto_awesome"
-              onClick={() => navigate(`/incidents/${warRoomTargetId}`)}
+              disabled={!warRoomTargetId}
+              onClick={() => {
+                if (warRoomTargetId) {
+                  navigate(`/incidents/${warRoomTargetId}`);
+                } else {
+                  navigate('/incidents');
+                }
+              }}
             >
               Launch War Room
             </Button>
@@ -211,8 +483,8 @@ export const OverviewPage: React.FC = () => {
           indicator={
             <div className="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden mt-2">
               <div
-                className="bg-primary h-full rounded-full"
-                style={{ width: `${Math.round((healthyCount / Math.max(1, totalFleetCount)) * 100)}%` }}
+                className="bg-primary h-full rounded-full transition-all"
+                style={{ width: `${totalFleetCount > 0 ? Math.round((healthyCount / totalFleetCount) * 100) : 0}%` }}
               />
             </div>
           }
@@ -220,18 +492,30 @@ export const OverviewPage: React.FC = () => {
 
         <KpiCard
           title="Active Incidents"
-          value={`${activeIncidents.length} Active`}
-          valueColor="text-error"
+          value={
+            activeEscalatingIncidents.length > 0
+              ? `${activeEscalatingIncidents.length} Active`
+              : mitigatedIncidents.length > 0
+              ? `${mitigatedIncidents.length} Mitigated`
+              : '0 Active'
+          }
+          valueColor={activeEscalatingIncidents.length > 0 ? 'text-error' : mitigatedIncidents.length > 0 ? 'text-tertiary' : 'text-on-surface'}
           icon="warning"
-          iconColor="text-error"
+          iconColor={activeEscalatingIncidents.length > 0 ? 'text-error' : mitigatedIncidents.length > 0 ? 'text-tertiary' : 'text-secondary'}
           badge={
             <span className="font-mono-caption text-mono-caption px-1.5 py-0.2 rounded bg-error-container text-on-error-container font-medium">
               {criticalActiveIncidents.length} Critical
             </span>
           }
-          subtitle={`${activeIncidents.length - criticalActiveIncidents.length} Medium/High · Escalation active`}
-          trend="Escalation active"
-          trendDirection="up"
+          subtitle={
+            activeEscalatingIncidents.length > 0
+              ? `${activeEscalatingIncidents.length - criticalActiveIncidents.length} Medium/High · Escalation active`
+              : mitigatedIncidents.length > 0
+              ? `${mitigatedIncidents.length} Mitigated · Verifying recovery`
+              : 'Zero active alerts'
+          }
+          trend={activeEscalatingIncidents.length > 0 ? 'Escalation active' : mitigatedIncidents.length > 0 ? 'Mitigated' : 'All clear'}
+          trendDirection={activeEscalatingIncidents.length > 0 ? 'up' : 'neutral'}
           onClick={() => navigate('/incidents')}
         />
 
@@ -240,12 +524,13 @@ export const OverviewPage: React.FC = () => {
           value={`${totalFleetCount}`}
           icon="lan"
           iconColor="text-secondary"
-          subtitle={`${healthyCount} OK · ${degradedCount} Degraded · ${unhealthyCount} Fail`}
+          subtitle={`${healthyCount} OK · ${degradedCount} Degraded · ${unhealthyCount} Fail${unknownCount > 0 ? ` · ${unknownCount} Unknown` : ''}`}
           indicator={
             <div className="flex h-1.5 w-full rounded-full overflow-hidden bg-surface-container-high gap-0.5 mt-2">
-              <div className="bg-primary h-full transition-all" style={{ width: `${(healthyCount / totalFleetCount) * 100}%` }} />
-              <div className="bg-tertiary-container h-full transition-all" style={{ width: `${(degradedCount / totalFleetCount) * 100}%` }} />
-              <div className="bg-error h-full transition-all" style={{ width: `${(unhealthyCount / totalFleetCount) * 100}%` }} />
+              <div className="bg-primary h-full transition-all" style={{ width: `${totalFleetCount > 0 ? (healthyCount / totalFleetCount) * 100 : 0}%` }} />
+              <div className="bg-tertiary-container h-full transition-all" style={{ width: `${totalFleetCount > 0 ? (degradedCount / totalFleetCount) * 100 : 0}%` }} />
+              <div className="bg-error h-full transition-all" style={{ width: `${totalFleetCount > 0 ? (unhealthyCount / totalFleetCount) * 100 : 0}%` }} />
+              <div className="bg-outline h-full transition-all" style={{ width: `${totalFleetCount > 0 ? (unknownCount / totalFleetCount) * 100 : 0}%` }} />
             </div>
           }
           onClick={() => navigate('/services')}
@@ -284,15 +569,29 @@ export const OverviewPage: React.FC = () => {
 
         <KpiCard
           title="P95 Latency"
-          value={`${Number(telemetry?.currentP95Ms ?? 0).toFixed(1)} ms`}
+          value={
+            (telemetry?.totalMetricSamples ?? 0) === 0 && (!telemetry?.points || telemetry.points.length === 0)
+              ? 'N/A'
+              : `${Number(telemetry?.currentP95Ms ?? 0).toFixed(1)} ms`
+          }
           valueColor={(telemetry?.currentP95Ms ?? 0) > 250 ? 'text-tertiary' : 'text-on-surface'}
           badge={
             <span className="px-1.5 py-0.5 rounded bg-surface-container-highest text-tertiary font-mono-badge text-mono-badge font-semibold">
               P99 {Number(telemetry?.currentP99Ms ?? 0).toFixed(0)}ms
             </span>
           }
-          subtitle={`Baseline ${Number(telemetry?.baselineP95Ms ?? 0).toFixed(1)} ms`}
-          trend={(telemetry?.currentP95Ms ?? 0) > (telemetry?.baselineP95Ms ?? 0) * 2 ? 'Elevated tail latency' : 'Within baseline'}
+          subtitle={
+            (telemetry?.totalMetricSamples ?? 0) === 0 && (!telemetry?.points || telemetry.points.length === 0)
+              ? 'No latency samples'
+              : `Baseline ${Number(telemetry?.baselineP95Ms ?? 0).toFixed(1)} ms`
+          }
+          trend={
+            (telemetry?.totalMetricSamples ?? 0) === 0 && (!telemetry?.points || telemetry.points.length === 0)
+              ? 'No telemetry active'
+              : (telemetry?.currentP95Ms ?? 0) > (telemetry?.baselineP95Ms ?? 0) * 2
+              ? 'Elevated tail latency'
+              : 'Within baseline'
+          }
           trendDirection={(telemetry?.currentP95Ms ?? 0) > (telemetry?.baselineP95Ms ?? 0) * 2 ? 'up' : 'neutral'}
         />
       </div>
@@ -370,53 +669,59 @@ export const OverviewPage: React.FC = () => {
               </span>
             </div>
             <div className="w-full h-32">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={telemetry?.points || []} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="2 2" stroke="#c7c4d8" opacity={0.3} />
-                  <XAxis
-                    dataKey="time"
-                    tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
-                    stroke="#c7c4d8"
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
-                    stroke="#c7c4d8"
-                    tickLine={false}
-                    tickFormatter={(val) => (val >= 1000 ? `${(val / 1000).toFixed(0)}k` : `${val}`)}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      borderColor: '#c7c4d8',
-                      borderRadius: '8px',
-                      fontSize: '11px',
-                      fontFamily: 'JetBrains Mono',
-                      boxShadow: '0 4px 12px rgba(11,28,48,0.08)'
-                    }}
-                    formatter={(value: any, name: any) => [
-                      `${Number(value).toLocaleString()} req/s`,
-                      name === 'throughputRps' ? 'Live Throughput' : 'Baseline'
-                    ]}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="baselineThroughputRps"
-                    stroke="#565e74"
-                    strokeWidth={1.5}
-                    strokeDasharray="4 4"
-                    dot={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="throughputRps"
-                    stroke="#3525cd"
-                    strokeWidth={2.2}
-                    dot={{ r: 2, fill: '#3525cd' }}
-                    activeDot={{ r: 5, fill: '#3525cd' }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {telemetry?.points && telemetry.points.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={telemetry.points} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="2 2" stroke="#c7c4d8" opacity={0.3} />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
+                      stroke="#c7c4d8"
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
+                      stroke="#c7c4d8"
+                      tickLine={false}
+                      tickFormatter={(val) => (val >= 1000 ? `${(val / 1000).toFixed(0)}k` : `${val}`)}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#ffffff',
+                        borderColor: '#c7c4d8',
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                        fontFamily: 'JetBrains Mono',
+                        boxShadow: '0 4px 12px rgba(11,28,48,0.08)'
+                      }}
+                      formatter={(value: any, name: any) => [
+                        `${Number(value).toLocaleString()} req/s`,
+                        name === 'throughputRps' ? 'Live Throughput' : 'Baseline'
+                      ]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="baselineThroughputRps"
+                      stroke="#565e74"
+                      strokeWidth={1.5}
+                      strokeDasharray="4 4"
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="throughputRps"
+                      stroke="#3525cd"
+                      strokeWidth={2.2}
+                      dot={{ r: 2, fill: '#3525cd' }}
+                      activeDot={{ r: 5, fill: '#3525cd' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-outline font-mono-caption text-mono-caption">
+                  No request rate samples in current window
+                </div>
+              )}
             </div>
           </div>
 
@@ -454,44 +759,50 @@ export const OverviewPage: React.FC = () => {
               </span>
             </div>
             <div className="w-full h-32">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={telemetry?.points || []} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="2 2" stroke="#c7c4d8" opacity={0.3} />
-                  <XAxis
-                    dataKey="time"
-                    tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
-                    stroke="#c7c4d8"
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
-                    stroke="#c7c4d8"
-                    tickLine={false}
-                    tickFormatter={(val) => `${val}%`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      borderColor: '#ffdad6',
-                      borderRadius: '8px',
-                      fontSize: '11px',
-                      fontFamily: 'JetBrains Mono',
-                      boxShadow: '0 4px 12px rgba(186,26,26,0.1)'
-                    }}
-                    formatter={(val: any) => [`${val}%`, 'Error Rate']}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="errorRatePercent"
-                    stroke="#ba1a1a"
-                    strokeWidth={2.2}
-                    fill="#ba1a1a"
-                    fillOpacity={0.15}
-                    dot={{ r: 2, fill: '#ba1a1a' }}
-                    activeDot={{ r: 5, fill: '#ba1a1a' }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              {telemetry?.points && telemetry.points.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={telemetry.points} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="2 2" stroke="#c7c4d8" opacity={0.3} />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
+                      stroke="#c7c4d8"
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
+                      stroke="#c7c4d8"
+                      tickLine={false}
+                      tickFormatter={(val) => `${val}%`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#ffffff',
+                        borderColor: '#ffdad6',
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                        fontFamily: 'JetBrains Mono',
+                        boxShadow: '0 4px 12px rgba(186,26,26,0.1)'
+                      }}
+                      formatter={(val: any) => [`${val}%`, 'Error Rate']}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="errorRatePercent"
+                      stroke="#ba1a1a"
+                      strokeWidth={2.2}
+                      fill="#ba1a1a"
+                      fillOpacity={0.15}
+                      dot={{ r: 2, fill: '#ba1a1a' }}
+                      activeDot={{ r: 5, fill: '#ba1a1a' }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-outline font-mono-caption text-mono-caption">
+                  No error telemetry samples in current window
+                </div>
+              )}
             </div>
           </div>
 
@@ -529,37 +840,43 @@ export const OverviewPage: React.FC = () => {
               </span>
             </div>
             <div className="w-full h-32">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={telemetry?.points || []} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="2 2" stroke="#c7c4d8" opacity={0.3} />
-                  <XAxis
-                    dataKey="time"
-                    tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
-                    stroke="#c7c4d8"
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
-                    stroke="#c7c4d8"
-                    tickLine={false}
-                    tickFormatter={(val) => `${val}`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      borderColor: '#c7c4d8',
-                      borderRadius: '8px',
-                      fontSize: '11px',
-                      fontFamily: 'JetBrains Mono',
-                      boxShadow: '0 4px 12px rgba(11,28,48,0.08)'
-                    }}
-                  />
-                  <Line type="monotone" dataKey="p50Ms" stroke="#565e74" strokeWidth={1.2} dot={false} name="P50" />
-                  <Line type="monotone" dataKey="p90Ms" stroke="#4f46e5" strokeWidth={1.4} dot={false} name="P90" />
-                  <Line type="monotone" dataKey="p95Ms" stroke="#003fac" strokeWidth={2.0} dot={false} name="P95" />
-                  <Line type="monotone" dataKey="p99Ms" stroke="#ba1a1a" strokeWidth={2.0} dot={false} name="P99" />
-                </LineChart>
-              </ResponsiveContainer>
+              {telemetry?.points && telemetry.points.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={telemetry.points} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="2 2" stroke="#c7c4d8" opacity={0.3} />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
+                      stroke="#c7c4d8"
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10, fill: '#777587', fontFamily: 'JetBrains Mono' }}
+                      stroke="#c7c4d8"
+                      tickLine={false}
+                      tickFormatter={(val) => `${val}`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#ffffff',
+                        borderColor: '#c7c4d8',
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                        fontFamily: 'JetBrains Mono',
+                        boxShadow: '0 4px 12px rgba(11,28,48,0.08)'
+                      }}
+                    />
+                    <Line type="monotone" dataKey="p50Ms" stroke="#565e74" strokeWidth={1.2} dot={false} name="P50" />
+                    <Line type="monotone" dataKey="p90Ms" stroke="#4f46e5" strokeWidth={1.4} dot={false} name="P90" />
+                    <Line type="monotone" dataKey="p95Ms" stroke="#003fac" strokeWidth={2.0} dot={false} name="P95" />
+                    <Line type="monotone" dataKey="p99Ms" stroke="#ba1a1a" strokeWidth={2.0} dot={false} name="P99" />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-outline font-mono-caption text-mono-caption">
+                  No latency quantiles recorded in current window
+                </div>
+              )}
             </div>
           </div>
 
@@ -648,110 +965,128 @@ export const OverviewPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container text-body-default font-body-default text-on-surface">
-              {filteredServices.map((svc) => (
-                <tr
-                  key={svc.id}
-                  className={`hover:bg-surface-container-low/60 transition-colors ${
-                    svc.status === 'unhealthy'
-                      ? 'bg-error-container/15'
-                      : svc.status === 'degraded'
-                      ? 'bg-surface-container-low/30'
-                      : ''
-                  }`}
-                >
-                  <td className="py-3 px-space-md font-medium flex items-center gap-space-xs">
-                    <span
-                      className={`material-symbols-outlined text-[18px] ${
-                        svc.status === 'unhealthy'
-                          ? 'text-error'
-                          : svc.status === 'degraded'
-                          ? 'text-tertiary'
-                          : 'text-secondary'
-                      }`}
-                    >
-                      {svc.identifier.startsWith('db:')
-                        ? 'database'
-                        : svc.name.includes('Order')
-                        ? 'shopping_cart'
-                        : svc.name.includes('Payment')
-                        ? 'credit_card'
-                        : svc.name.includes('Notification')
-                        ? 'forward_to_inbox'
-                        : 'dns'}
-                    </span>
-                    <div>
-                      <span className="font-semibold text-on-surface block leading-tight">
-                        {svc.name}
-                      </span>
-                      <span className="font-mono-caption text-mono-caption text-outline">
-                        {svc.identifier}
-                      </span>
-                    </div>
-                  </td>
-
-                  <td className="py-3 px-space-md">
-                    <span className="font-mono-caption text-mono-caption px-2 py-0.5 rounded bg-surface-container text-on-surface-variant">
-                      {svc.environment}
-                    </span>
-                  </td>
-
-                  <td className="py-3 px-space-md">
-                    {svc.status === 'healthy' && (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-fixed font-mono-badge text-mono-badge font-semibold">
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                        Healthy
-                      </span>
-                    )}
-                    {svc.status === 'degraded' && (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-mono-badge text-mono-badge font-semibold">
-                        <span className="w-1.5 h-1.5 rounded-full bg-tertiary" />
-                        Degraded
-                      </span>
-                    )}
-                    {svc.status === 'unhealthy' && (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-error text-on-error font-mono-badge text-mono-badge font-semibold">
-                        <span className="w-1.5 h-1.5 rounded-full bg-surface-bright animate-ping" />
-                        Failing
-                      </span>
-                    )}
-                  </td>
-
-                  <td className="py-3 px-space-md text-right font-mono-body text-mono-body text-on-surface">
-                    {svc.requestRateRps.toLocaleString()} {svc.identifier.startsWith('db:') ? 'qps' : 'rps'}
-                  </td>
-
-                  <td
-                    className={`py-3 px-space-md text-right font-mono-body text-mono-body ${
-                      svc.errorRatePercent > 1.0 ? 'text-error font-semibold' : 'text-on-surface-variant'
-                    }`}
-                  >
-                    {svc.errorRatePercent.toFixed(2)}%
-                  </td>
-
-                  <td
-                    className={`py-3 px-space-md text-right font-mono-body text-mono-body ${
-                      svc.p95LatencyMs > 500 ? 'text-error font-semibold' : svc.p95LatencyMs > 100 ? 'text-tertiary font-medium' : 'text-on-surface-variant'
-                    }`}
-                  >
-                    {svc.p95LatencyMs}ms
-                  </td>
-
-                  <td className="py-3 px-space-md text-right font-mono-caption text-mono-caption text-on-surface-variant">
-                    {svc.lastDeployment || 'N/A'}
-                  </td>
-
-                  <td className="py-3 px-space-md text-center">
-                    <button
-                      className="p-1 hover:bg-surface-container rounded text-outline hover:text-on-surface transition-colors"
-                      title={`Inspect ${svc.name}`}
-                      type="button"
-                      onClick={() => navigate('/services')}
-                    >
-                      <span className="material-symbols-outlined text-[18px]">open_in_new</span>
-                    </button>
+              {filteredServices.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-on-surface-variant font-body-default">
+                    {services.length === 0
+                      ? 'No services registered for this project.'
+                      : 'No services match the current filter or search criteria.'}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredServices.map((svc) => (
+                  <tr
+                    key={svc.id}
+                    className={`hover:bg-surface-container-low/60 transition-colors ${
+                      svc.status === 'unhealthy'
+                        ? 'bg-error-container/15'
+                        : svc.status === 'degraded'
+                        ? 'bg-surface-container-low/30'
+                        : ''
+                    }`}
+                  >
+                    <td className="py-3 px-space-md font-medium flex items-center gap-space-xs">
+                      <span
+                        className={`material-symbols-outlined text-[18px] ${
+                          svc.status === 'unhealthy'
+                            ? 'text-error'
+                            : svc.status === 'degraded'
+                            ? 'text-tertiary'
+                            : svc.status === 'healthy'
+                            ? 'text-secondary'
+                            : 'text-outline'
+                        }`}
+                      >
+                        {svc.identifier.startsWith('db:')
+                          ? 'database'
+                          : svc.name.includes('Order')
+                          ? 'shopping_cart'
+                          : svc.name.includes('Payment')
+                          ? 'credit_card'
+                          : svc.name.includes('Notification')
+                          ? 'forward_to_inbox'
+                          : 'dns'}
+                      </span>
+                      <div>
+                        <span className="font-semibold text-on-surface block leading-tight">
+                          {svc.name}
+                        </span>
+                        <span className="font-mono-caption text-mono-caption text-outline">
+                          {svc.identifier}
+                        </span>
+                      </div>
+                    </td>
+
+                    <td className="py-3 px-space-md">
+                      <span className="font-mono-caption text-mono-caption px-2 py-0.5 rounded bg-surface-container text-on-surface-variant">
+                        {svc.environment}
+                      </span>
+                    </td>
+
+                    <td className="py-3 px-space-md">
+                      {svc.status === 'healthy' && (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-fixed font-mono-badge text-mono-badge font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                          Healthy
+                        </span>
+                      )}
+                      {svc.status === 'degraded' && (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-mono-badge text-mono-badge font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-tertiary" />
+                          Degraded
+                        </span>
+                      )}
+                      {svc.status === 'unhealthy' && (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-error text-on-error font-mono-badge text-mono-badge font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-surface-bright animate-ping" />
+                          Failing
+                        </span>
+                      )}
+                      {svc.status === 'unknown' && (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-mono-badge text-mono-badge font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-outline" />
+                          Unknown
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="py-3 px-space-md text-right font-mono-body text-mono-body text-on-surface">
+                      {svc.requestRateRps.toLocaleString()} {svc.identifier.startsWith('db:') ? 'qps' : 'rps'}
+                    </td>
+
+                    <td
+                      className={`py-3 px-space-md text-right font-mono-body text-mono-body ${
+                        svc.errorRatePercent > 1.0 ? 'text-error font-semibold' : 'text-on-surface-variant'
+                      }`}
+                    >
+                      {svc.errorRatePercent.toFixed(2)}%
+                    </td>
+
+                    <td
+                      className={`py-3 px-space-md text-right font-mono-body text-mono-body ${
+                        svc.p95LatencyMs > 500 ? 'text-error font-semibold' : svc.p95LatencyMs > 100 ? 'text-tertiary font-medium' : 'text-on-surface-variant'
+                      }`}
+                    >
+                      {svc.p95LatencyMs}ms
+                    </td>
+
+                    <td className="py-3 px-space-md text-right font-mono-caption text-mono-caption text-on-surface-variant">
+                      {svc.lastDeployment || 'N/A'}
+                    </td>
+
+                    <td className="py-3 px-space-md text-center">
+                      <button
+                        className="p-1 hover:bg-surface-container rounded text-outline hover:text-on-surface transition-colors"
+                        title={`Inspect ${svc.name}`}
+                        type="button"
+                        onClick={() => navigate('/services')}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -779,57 +1114,63 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-space-xs">
-          {incidents.slice(0, 3).map((incident) => (
-            <div
-              key={incident.id}
-              className="p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container flex flex-col md:flex-row md:items-center justify-between gap-space-sm transition-colors border border-outline-variant/15"
-            >
-              <div className="flex items-start md:items-center gap-space-sm">
-                <span
-                  className={`font-mono-caption text-mono-caption font-semibold px-2 py-1 rounded ${
-                    incident.severity === 'CRITICAL'
-                      ? 'bg-error text-on-error'
-                      : incident.severity === 'HIGH'
-                      ? 'bg-tertiary text-on-tertiary'
-                      : 'bg-surface-container text-on-surface'
-                  }`}
-                >
-                  {incident.id}
-                </span>
-                <span
-                  className={`font-mono-badge text-mono-badge uppercase px-1.5 py-0.5 rounded font-semibold ${
-                    incident.severity === 'CRITICAL'
-                      ? 'bg-error-container text-on-error-container'
-                      : 'bg-surface-container-high text-on-surface'
-                  }`}
-                >
-                  {incident.severity}
-                </span>
-                <div className="flex flex-col">
-                  <span className="font-body-medium text-body-medium text-on-surface font-semibold">
-                    {incident.title}
+          {incidents.length === 0 ? (
+            <div className="py-6 text-center text-on-surface-variant font-body-default">
+              No incidents recorded for this project.
+            </div>
+          ) : (
+            incidents.slice(0, 3).map((incident) => (
+              <div
+                key={incident.id}
+                className="p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container flex flex-col md:flex-row md:items-center justify-between gap-space-sm transition-colors border border-outline-variant/15"
+              >
+                <div className="flex items-start md:items-center gap-space-sm">
+                  <span
+                    className={`font-mono-caption text-mono-caption font-semibold px-2 py-1 rounded ${
+                      incident.severity === 'CRITICAL'
+                        ? 'bg-error text-on-error'
+                        : incident.severity === 'HIGH'
+                        ? 'bg-tertiary text-on-tertiary'
+                        : 'bg-surface-container text-on-surface'
+                    }`}
+                  >
+                    {incident.id}
                   </span>
-                  <span className="font-mono-caption text-mono-caption text-on-surface-variant">
-                    Impacts {incident.affectedServices.join(', ')} • Started {incident.startedAt} ({incident.activeDuration})
+                  <span
+                    className={`font-mono-badge text-mono-badge uppercase px-1.5 py-0.5 rounded font-semibold ${
+                      incident.severity === 'CRITICAL'
+                        ? 'bg-error-container text-on-error-container'
+                        : 'bg-surface-container-high text-on-surface'
+                    }`}
+                  >
+                    {incident.severity}
                   </span>
+                  <div className="flex flex-col">
+                    <span className="font-body-medium text-body-medium text-on-surface font-semibold">
+                      {incident.title}
+                    </span>
+                    <span className="font-mono-caption text-mono-caption text-on-surface-variant">
+                      Impacts {incident.affectedServices.join(', ')} • Started {incident.startedAt} ({incident.activeDuration})
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-space-sm self-end md:self-auto">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-highest text-primary font-mono-badge text-mono-badge font-medium">
+                    <span className="material-symbols-outlined text-[12px]">psychology</span>
+                    {incident.status} {incident.aiRemediationAvailable && '(AI Active)'}
+                  </span>
+                  <Button
+                    variant={incident.severity === 'CRITICAL' ? 'primary' : 'surface'}
+                    size="sm"
+                    onClick={() => navigate(`/incidents/${incident.id}`)}
+                  >
+                    {incident.severity === 'CRITICAL' ? 'War Room' : 'Details'}
+                  </Button>
                 </div>
               </div>
-
-              <div className="flex items-center gap-space-sm self-end md:self-auto">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-highest text-primary font-mono-badge text-mono-badge font-medium">
-                  <span className="material-symbols-outlined text-[12px]">psychology</span>
-                  {incident.status} {incident.aiRemediationAvailable && '(AI Active)'}
-                </span>
-                <Button
-                  variant={incident.severity === 'CRITICAL' ? 'primary' : 'surface'}
-                  size="sm"
-                  onClick={() => navigate(`/incidents/${incident.id}`)}
-                >
-                  {incident.severity === 'CRITICAL' ? 'War Room' : 'Details'}
-                </Button>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

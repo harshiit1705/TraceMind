@@ -23,6 +23,8 @@ export interface ServiceItem {
   upstreamDependencies?: string[];
   downstreamDependencies?: string[];
   description?: string;
+  projectId?: string;
+  project_id?: string;
 }
 
 export interface ServicesOverviewStats {
@@ -30,6 +32,7 @@ export interface ServicesOverviewStats {
   healthyCount: number;
   degradedCount: number;
   unhealthyCount: number;
+  unknownCount?: number;
   ingestionBandwidth: string;
   logPayloadDaily: string;
   sampleIngestionRatePerSec?: number | null;

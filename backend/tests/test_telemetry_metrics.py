@@ -130,6 +130,8 @@ def test_metrics_ingest_persist_and_forward_to_anomaly_engine(client: TestClient
     )
     assert list_resp.status_code == 200
     assert list_resp.json()["total"] >= 6
+    assert list_resp.json()["items"][0]["service_slug"] == "payment-service"
+    assert list_resp.json()["items"][0]["service_identifier"] == "svc:stripe-ledger-adapter"
 
     # 6. Overview endpoint returns non-empty time series computed from persisted samples
     ov_resp = client.get(f"/api/v1/telemetry/overview?range=15m&project_id={proj.id}")
