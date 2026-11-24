@@ -1,6 +1,6 @@
 """Application service coordinating correlation evaluation, persistence, and querying."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.repositories.project_repository import ProjectRepository
 from app.repositories.service_dependency_repository import ServiceDependencyRepository
 from app.repositories.service_repository import ServiceRepository
 from app.schemas.correlation import (
+    CorrelationConfig,
     CorrelationEvaluationRequest,
     CorrelationEvaluationResponse,
     CorrelationGroupResponse,
@@ -68,21 +69,41 @@ class CorrelationService:
         if not project:
             raise ProjectNotFoundError(f"Project '{request.project_id}' was not found.")
 
-        # Run correlation engine
+        # Resolve one explicit evaluation window and pass it unchanged to the engine.
+        # This keeps empty-result responses truthful instead of reporting a zero-width window.
+        effective_config = request.config or CorrelationConfig()
+        evaluation_end = request.end_time or datetime.now(timezone.utc)
+        evaluation_start = request.start_time or (
+            evaluation_end - timedelta(seconds=effective_config.time_window_seconds)
+        )
+
         discovered_groups = self.engine.evaluate(
             project_id=request.project_id,
-            start_time=request.start_time,
-            end_time=request.end_time,
-            config=request.config,
+            start_time=evaluation_start,
+            end_time=evaluation_end,
+            config=effective_config,
         )
+
+        # Count every anomaly the engine considered, including events filtered out
+        # because they did not form a cluster meeting min_events_per_group.
+        evaluated_event_ids = (
+            self.db.query(AnomalyEvent.id)
+            .filter(
+                AnomalyEvent.project_id == request.project_id,
+                AnomalyEvent.occurred_at >= evaluation_start,
+                AnomalyEvent.occurred_at <= evaluation_end,
+            )
+            .order_by(AnomalyEvent.occurred_at.asc(), AnomalyEvent.id.asc())
+            .limit(effective_config.max_events)
+            .all()
+        )
+        total_anomalies_evaluated = len(evaluated_event_ids)
 
         persisted_group_responses: List[CorrelationGroupResponse] = []
         seen_group_ids = set()
-        total_anomalies_evaluated = 0
 
         try:
             for group_resp in discovered_groups:
-                total_anomalies_evaluated += group_resp.events_count
                 persisted_row = self.correlation_repo.persist_group(group_resp, commit=False)
 
                 # Avoid duplicates if multiple evaluated clusters resolve to the same encompassing group
@@ -102,19 +123,13 @@ class CorrelationService:
             self.db.rollback()
             raise
 
-        now_utc = datetime.now(timezone.utc)
-        start_t = request.start_time or (
-            persisted_group_responses[0].time_window_start
-            if persisted_group_responses
-            else now_utc
-        )
-        end_t = request.end_time or now_utc
+        evaluated_at = datetime.now(timezone.utc)
 
         return CorrelationEvaluationResponse(
             project_id=request.project_id,
-            evaluated_at=now_utc,
-            time_window_start=start_t,
-            time_window_end=end_t,
+            evaluated_at=evaluated_at,
+            time_window_start=evaluation_start,
+            time_window_end=evaluation_end,
             total_anomalies_evaluated=total_anomalies_evaluated,
             correlation_groups_count=len(persisted_group_responses),
             groups=persisted_group_responses,

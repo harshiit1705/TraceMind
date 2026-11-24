@@ -10,6 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+JSONType = sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql")
+
 # revision identifiers, used by Alembic.
 revision: str = '0002_anomaly_persistence'
 down_revision: Union[str, None] = '0001_initial_schema'
@@ -26,8 +28,8 @@ def upgrade() -> None:
         sa.Column('service_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('services.id', ondelete='CASCADE'), nullable=False),
         sa.Column('metric_name', sa.String(length=64), nullable=False),
         sa.Column('detection_method', sa.String(length=32), nullable=False),
-        sa.Column('config_snapshot', postgresql.JSONB(astext_type=sa.Text()), server_default='{}', nullable=False),
-        sa.Column('baseline_state', postgresql.JSONB(astext_type=sa.Text()), server_default='{}', nullable=False),
+        sa.Column('config_snapshot', JSONType, server_default='{}', nullable=False),
+        sa.Column('baseline_state', JSONType, server_default='{}', nullable=False),
         sa.Column('sample_count', sa.Integer(), server_default='0', nullable=False),
         sa.Column('last_event_timestamp', sa.DateTime(timezone=True), nullable=True),
         sa.Column('version', sa.Integer(), server_default='1', nullable=False),

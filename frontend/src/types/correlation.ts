@@ -178,6 +178,21 @@ export interface CorrelationGroup {
   created_at: string;
 }
 
+export interface CorrelationConfig {
+  time_window_seconds?: number;
+  max_events?: number;
+  min_events_per_group?: number;
+  max_cascade_delay_seconds?: number;
+  max_incident_duration_seconds?: number;
+}
+
+export interface CorrelationEvaluationRequest {
+  project_id: string;
+  start_time?: string;
+  end_time?: string;
+  config?: CorrelationConfig;
+}
+
 export interface CorrelationEvaluationResponse {
   project_id: string;
   evaluated_at: string;

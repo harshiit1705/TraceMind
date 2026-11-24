@@ -14,6 +14,13 @@ import {
   RecoveryVerificationResponse,
 } from '../../types';
 
+import {
+  executeProposeFaultReset,
+  resolveIncidentProjectId,
+  type ProposeFaultResetParams,
+} from './remediationHandler';
+export { executeProposeFaultReset, resolveIncidentProjectId, type ProposeFaultResetParams };
+
 export const IncidentDetailsPage: React.FC = () => {
   const { incidentId = 'INC-8492' } = useParams<{ incidentId: string }>();
   const [incident, setIncident] = useState<IncidentItem | null>(null);
@@ -56,10 +63,10 @@ export const IncidentDetailsPage: React.FC = () => {
     }
   }, []);
 
-  const loadRemediations = useCallback(async (incId: string) => {
+  const loadRemediations = useCallback(async (incId: string, projId?: string) => {
     setLoadingRemediations(true);
     try {
-      const res = await apiClient.getRemediations(incId);
+      const res = await apiClient.getRemediations(incId, projId);
       setRemediations(res.data || []);
     } catch {
       // Non-blocking fallback
@@ -113,9 +120,10 @@ export const IncidentDetailsPage: React.FC = () => {
         setIncident(res.data);
         setLoading(false);
         if (res.data) {
+          const projId = resolveIncidentProjectId(res.data);
           loadTimeline(res.data.id);
-          loadRemediations(res.data.id);
-          loadVerifications(res.data.id, (res.data.project_id || res.data.projectId) ?? undefined);
+          loadRemediations(res.data.id, projId);
+          loadVerifications(res.data.id, projId);
           const corrId = res.data.correlationGroupId || res.data.correlation_group_id;
           if (corrId) {
             loadInvestigation(corrId, res.data.id);
@@ -240,9 +248,10 @@ export const IncidentDetailsPage: React.FC = () => {
           ...prev,
           [remId]: res.data,
         }));
+        const projId = resolveIncidentProjectId(incident);
         await Promise.all([
           loadTimeline(incident.id),
-          loadRemediations(incident.id),
+          loadRemediations(incident.id, projId),
           apiClient.getIncidentById(incident.id).then((r) => r.data && setIncident(r.data)),
         ]);
       }
@@ -870,28 +879,14 @@ export const IncidentDetailsPage: React.FC = () => {
                 size="sm"
                 icon="add_task"
                 onClick={async () => {
-                  setActionInProgress(true);
-                  try {
-                    const res = await apiClient.proposeRemediation(incident.id, {
-                      title: 'Reset Payment Service Faults and Connection Locks',
-                      target_service: 'payment-service',
-                      description: 'Reset faults and clear deadlocks on payment-service to restore throughput.',
-                      action_name: 'RESET_SERVICE_FAULTS',
-                      risk_level: 'LOW',
-                      preconditions: ['Payment error rate > 5% or latency > 1000ms'],
-                      rollback_procedure: 'Re-route traffic or restart container if lock persists',
-                      expected_result: 'Payment service error rate drops to 0% and latency normalizes',
-                      verification_steps: ['Check GET /health on payment-service'],
-                      proposer_name: 'Alex Chen (Staff SRE)',
-                    });
-                    setRemediations((prev) => [...prev, res.data]);
-                    await loadTimeline(incident.id);
-                  } catch (err: unknown) {
-                    const e = err as { message?: string };
-                    setRemediationError(e.message || 'Failed to propose remediation');
-                  } finally {
-                    setActionInProgress(false);
-                  }
+                  await executeProposeFaultReset({
+                    incident,
+                    api: apiClient,
+                    setActionInProgress,
+                    setRemediationError,
+                    setRemediations,
+                    loadTimeline,
+                  });
                 }}
                 disabled={actionInProgress}
               >

@@ -1,44 +1,53 @@
 # TraceMind Demo Microservices
 
-An independent sample distributed e-commerce system designed to generate realistic customer traffic, service-to-service latency, cascading errors, and telemetry streams for **TraceMind** observability and root-cause investigation.
+These three FastAPI services form a small distributed e-commerce system used to generate realistic request telemetry for TraceMind.
 
-## Architecture & Ports
+## Services
 
-| Service | Port | Description |
-| :--- | :--- | :--- |
-| **Order Service** | `8001` | Checkout orchestrator (`POST /orders`). Calls Inventory & Payment services. |
-| **Payment Service** | `8002` | Payment processor (`POST /payments/charge`). Supports latency & error injection. |
-| **Inventory Service** | `8003` | Warehouse stock manager (`POST /inventory/reserve`). Supports lock contention & outages. |
+| Service | Port | Main role |
+|---|---:|---|
+| Order Service | 8001 | Checkout orchestration |
+| Payment Service | 8002 | Payment processing and payment fault injection |
+| Inventory Service | 8003 | Stock reservation |
 
-TraceMind continues running independently on its standard ports (`8000` backend, `5173` frontend). Telemetry flows asynchronously via HTTP `POST /api/v1/anomalies/evaluate`.
+Each service uses the shared observability middleware and telemetry client to emit metrics, structured logs, and distributed spans to the TraceMind backend at `http://localhost:8000/api/v1`.
 
-## Running the Services
+## Start
 
-From `D:\TraceMind\demo-microservices` (or using TraceMind's virtual environment):
+Start PostgreSQL and the TraceMind backend first. Then, from the repository root:
 
-```bash
-# Start all three services concurrently
-..\backend\.venv\Scripts\python.exe run_all.py
+```powershell
+backend\.venv\Scripts\python.exe demo-microservices\run_all.py
 ```
 
-## Traffic & Fault Injection CLI
+The full-stack launcher in `scripts/start_demo.bat` starts the backend, all three services, and the frontend together.
 
-Once the microservices (and TraceMind backend) are running, use the CLI to execute repeatable scenarios:
+## Payment failure demonstration
 
-```bash
-# 1. Inspect service health & active faults
-..\backend\.venv\Scripts\python.exe -m simulator.cli status
+Use the browser-based Swagger UI at `http://localhost:8002/docs`.
 
-# 2. Run normal steady-state traffic (establishes statistical baselines in TraceMind)
-..\backend\.venv\Scripts\python.exe -m simulator.cli scenario normal --count 10
+1. Check `GET /faults` and confirm `fault_type` is `none`.
+2. Establish a healthy baseline with successful `POST /payments/charge` requests if this is a fresh project.
+3. Use `POST /faults` to inject a controlled fault. For example:
 
-# 3. Trigger Inventory Latency Spike (+650ms) + controlled correlation evaluation
-..\backend\.venv\Scripts\python.exe -m simulator.cli scenario inventory-latency --delay-ms 650 --requests 5
-
-# 4. Trigger Payment Gateway Error Spike (100% HTTP 502) + controlled correlation evaluation
-..\backend\.venv\Scripts\python.exe -m simulator.cli scenario payment-errors --error-pct 100 --requests 5
-
-# 5. Reset faults and verify healthy recovery
-..\backend\.venv\Scripts\python.exe -m simulator.cli scenario recover --count 5
+```json
+{
+  "fault_type": "error_rate",
+  "latency_delay_ms": 0,
+  "error_rate_pct": 100,
+  "error_status_code": 502,
+  "error_message": "TraceMind live demo - simulated payment gateway failure"
+}
 ```
 
+4. Submit several `POST /payments/charge` requests and confirm HTTP 502 responses.
+5. Wait a few seconds for asynchronous telemetry to flush, then inspect Logs and Traces in TraceMind.
+6. Verify that fresh anomaly events exist before triggering **Correlate Incidents** from the TraceMind Services page.
+
+The correlation engine evaluates the last five minutes by default and requires at least two related anomaly events per group. Logs and spans do not automatically count as anomaly events.
+
+## Reset
+
+Use `POST /faults/reset`, then confirm `GET /health` returns a healthy status and `GET /faults` reports `fault_type: "none"`.
+
+For the full setup, recruiter walkthrough, and test commands, see the repository root `README.md`.

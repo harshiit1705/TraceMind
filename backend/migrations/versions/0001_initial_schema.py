@@ -10,6 +10,9 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+# Use JSON on SQLite test/dev databases and native JSONB on PostgreSQL.
+JSONType = sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql")
+
 # revision identifiers, used by Alembic.
 revision: str = '0001_initial_schema'
 down_revision: Union[str, None] = None
@@ -25,7 +28,7 @@ def upgrade() -> None:
         sa.Column('slug', sa.String(length=64), nullable=False, unique=True),
         sa.Column('name', sa.String(length=128), nullable=False),
         sa.Column('tier', sa.String(length=32), server_default='enterprise', nullable=False),
-        sa.Column('settings_json', postgresql.JSONB(astext_type=sa.Text()), server_default='{}', nullable=False),
+        sa.Column('settings_json', JSONType, server_default='{}', nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     )
@@ -60,7 +63,7 @@ def upgrade() -> None:
         sa.Column('request_rate_rps', sa.Float(), server_default='0.0', nullable=False),
         sa.Column('error_rate_percent', sa.Float(), server_default='0.0', nullable=False),
         sa.Column('p95_latency_ms', sa.Float(), server_default='0.0', nullable=False),
-        sa.Column('metadata_json', postgresql.JSONB(astext_type=sa.Text()), server_default='{}', nullable=False),
+        sa.Column('metadata_json', JSONType, server_default='{}', nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.UniqueConstraint('project_id', 'slug', name='uq_project_service_slug'),
@@ -84,7 +87,7 @@ def upgrade() -> None:
         sa.Column('commander_name', sa.String(length=128), server_default='Alex Chen', nullable=False),
         sa.Column('commander_role', sa.String(length=128), server_default='Staff SRE', nullable=False),
         sa.Column('root_cause_summary', sa.Text(), nullable=True),
-        sa.Column('affected_services', postgresql.JSONB(astext_type=sa.Text()), server_default='[]', nullable=False),
+        sa.Column('affected_services', JSONType, server_default='[]', nullable=False),
         sa.Column('summary', sa.Text(), nullable=True),
         sa.Column('is_demo', sa.Boolean(), server_default='true', nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -105,7 +108,7 @@ def upgrade() -> None:
         sa.Column('event_type', sa.String(length=32), server_default='alert', nullable=False),
         sa.Column('source', sa.String(length=128), server_default='system', nullable=False),
         sa.Column('description', sa.Text(), nullable=False),
-        sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), server_default='{}', nullable=True),
+        sa.Column('payload', JSONType, server_default='{}', nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     )
@@ -145,7 +148,7 @@ def upgrade() -> None:
         sa.Column('observation', sa.Text(), nullable=False),
         sa.Column('confidence_weight', sa.Float(), server_default='1.0', nullable=False),
         sa.Column('timestamp', sa.DateTime(timezone=True), nullable=False),
-        sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), server_default='{}', nullable=False),
+        sa.Column('payload', JSONType, server_default='{}', nullable=False),
         sa.Column('is_demo', sa.Boolean(), server_default='true', nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -168,8 +171,8 @@ def upgrade() -> None:
         sa.Column('explanation', sa.Text(), nullable=False),
         sa.Column('status', sa.String(length=32), server_default='HYPOTHESIS', nullable=False),
         sa.Column('confidence_score', sa.Float(), server_default='0.0', nullable=False),
-        sa.Column('affected_services', postgresql.JSONB(astext_type=sa.Text()), server_default='[]', nullable=False),
-        sa.Column('supporting_evidence_ids', postgresql.JSONB(astext_type=sa.Text()), server_default='[]', nullable=False),
+        sa.Column('affected_services', JSONType, server_default='[]', nullable=False),
+        sa.Column('supporting_evidence_ids', JSONType, server_default='[]', nullable=False),
         sa.Column('is_demo', sa.Boolean(), server_default='true', nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -204,7 +207,7 @@ def upgrade() -> None:
         sa.Column('code', sa.String(length=32), nullable=False, unique=True),
         sa.Column('title', sa.String(length=256), nullable=False),
         sa.Column('description', sa.Text(), nullable=False),
-        sa.Column('steps', postgresql.JSONB(astext_type=sa.Text()), server_default='[]', nullable=False),
+        sa.Column('steps', JSONType, server_default='[]', nullable=False),
         sa.Column('is_automated', sa.Boolean(), server_default='false', nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),

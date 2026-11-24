@@ -5,6 +5,9 @@ import { Button, LoadingSpinner, ErrorState } from '../../components/common';
 import { apiClient } from '../../services/apiClient';
 import { ServiceItem, ServicesOverviewStats } from '../../types';
 
+import { executeIncidentCorrelation, type IncidentCorrelationParams } from './correlationHandler';
+export { executeIncidentCorrelation, type IncidentCorrelationParams };
+
 type SortField = 'name' | 'requestRateRps' | 'errorRatePercent' | 'p95LatencyMs';
 type SortOrder = 'asc' | 'desc';
 
@@ -25,6 +28,23 @@ export const ServicesPage: React.FC = () => {
 
   // Selected Service for slide-out detail drawer
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
+  const [isCorrelating, setIsCorrelating] = useState<boolean>(false);
+  const [correlationFeedback, setCorrelationFeedback] = useState<{
+    type: 'success' | 'warning' | 'error';
+    message: string;
+  } | null>(null);
+
+  const handleCorrelateIncidents = async () => {
+    if (isCorrelating) return;
+    await executeIncidentCorrelation({
+      selectedService,
+      services,
+      api: apiClient,
+      navigate,
+      setIsCorrelating,
+      setFeedback: setCorrelationFeedback,
+    });
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -810,6 +830,36 @@ export const ServicesPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Correlation Evaluation Feedback Banner */}
+          {correlationFeedback && (
+            <div
+              role="alert"
+              data-testid="correlation-feedback"
+              className={`p-3 rounded-lg text-xs flex items-center justify-between gap-2 transition-all ${
+                correlationFeedback.type === 'success'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                  : correlationFeedback.type === 'warning'
+                    ? 'bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+                    : 'bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px]">
+                  {correlationFeedback.type === 'success' ? 'check_circle' : correlationFeedback.type === 'warning' ? 'warning' : 'error'}
+                </span>
+                <span className="font-medium">{correlationFeedback.message}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCorrelationFeedback(null)}
+                className="p-0.5 hover:opacity-75 focus:outline-none"
+                aria-label="Dismiss notification"
+              >
+                <span className="material-symbols-outlined text-[14px]">close</span>
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center justify-end gap-space-sm pt-space-sm border-t border-outline-variant/20">
             <Button variant="surface" icon="hub" onClick={() => navigate('/dependency-map')}>
               Locate in Dependency Map
@@ -820,9 +870,11 @@ export const ServicesPage: React.FC = () => {
             <Button
               variant="primary"
               icon="crisis_alert"
-              onClick={() => navigate('/incidents')}
+              loading={isCorrelating}
+              disabled={isCorrelating}
+              onClick={handleCorrelateIncidents}
             >
-              Correlate Incidents
+              {isCorrelating ? 'Correlating...' : 'Correlate Incidents'}
             </Button>
           </div>
         </div>

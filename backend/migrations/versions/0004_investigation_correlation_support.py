@@ -10,6 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+JSONType = sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql")
+
 # revision identifiers, used by Alembic.
 revision: str = '0004_investigation_correlation_support'
 down_revision: Union[str, None] = '0003_service_dependencies_and_correlation'
@@ -57,7 +59,7 @@ def upgrade() -> None:
 
         # 4. Add validated structured investigation payload and evidence hash
         batch_op.add_column(
-            sa.Column('investigation_json', postgresql.JSONB(astext_type=sa.Text()), nullable=True)
+            sa.Column('investigation_json', JSONType, nullable=True)
         )
         batch_op.add_column(
             sa.Column('evidence_hash', sa.String(length=64), nullable=True)

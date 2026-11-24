@@ -14,6 +14,7 @@ Press Ctrl+C to stop all services cleanly.
 import asyncio
 import os
 import signal
+import shutil
 import socket
 import subprocess
 import sys
@@ -74,6 +75,24 @@ def main():
             print(f"{CYAN}Note: Vite frontend strictly requires port 5173 to match configured CORS and redirect policies.{RESET}")
         sys.exit(1)
 
+    backend_dir = ROOT_DIR / "backend"
+    frontend_dir = ROOT_DIR / "frontend"
+    if not shutil.which("npm.cmd" if os.name == "nt" else "npm"):
+        print(f"{RED}{BOLD}ERROR: Node.js/npm was not found on PATH.{RESET}")
+        sys.exit(1)
+    if not (frontend_dir / "node_modules").exists():
+        print(f"{RED}{BOLD}ERROR: Frontend dependencies are missing. Run 'npm ci' inside frontend first.{RESET}")
+        sys.exit(1)
+
+    print(f"{CYAN}▶{RESET} Applying database migrations (Alembic upgrade head)...")
+    migration = subprocess.run(
+        [PYTHON_EXE, "-m", "alembic", "upgrade", "head"],
+        cwd=str(backend_dir),
+    )
+    if migration.returncode != 0:
+        print(f"{RED}{BOLD}ERROR: Database migration failed. Check backend/.env and database availability.{RESET}")
+        sys.exit(migration.returncode)
+
     processes = {}
 
     try:
@@ -82,8 +101,6 @@ def main():
         backend_proc = subprocess.Popen(
             [PYTHON_EXE, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
             cwd=str(ROOT_DIR / "backend"),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
         )
         processes["Backend (:8000)"] = backend_proc
 
@@ -92,8 +109,6 @@ def main():
         demo_proc = subprocess.Popen(
             [PYTHON_EXE, "run_all.py"],
             cwd=str(ROOT_DIR / "demo-microservices"),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
         )
         processes["Microservices (:8001-8003)"] = demo_proc
 
@@ -103,8 +118,6 @@ def main():
         frontend_proc = subprocess.Popen(
             [npm_cmd, "run", "dev"],
             cwd=str(ROOT_DIR / "frontend"),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
         )
         processes["Frontend (:5173)"] = frontend_proc
 
@@ -112,13 +125,14 @@ def main():
         time.sleep(3)
 
         services = [
-            ("Backend", "http://127.0.0.1:8000/api/v1/health"),
+            ("Backend + Database", "http://127.0.0.1:8000/api/v1/ready"),
             ("Order Service", "http://127.0.0.1:8001/health"),
             ("Payment Service", "http://127.0.0.1:8002/health"),
             ("Inventory Service", "http://127.0.0.1:8003/health"),
             ("Frontend", "http://127.0.0.1:5173/"),
         ]
 
+        failed_services = []
         for name, url in services:
             healthy = False
             for _ in range(15):
@@ -129,7 +143,12 @@ def main():
             if healthy:
                 print(f"  {GREEN}✔{RESET} {name:<18} is READY at {url}")
             else:
+                failed_services.append(name)
                 print(f"  {RED}✘{RESET} {name:<18} did not respond at {url}")
+
+        if failed_services:
+            print(f"\n{RED}{BOLD}Startup incomplete. Unhealthy services: {', '.join(failed_services)}{RESET}")
+            raise SystemExit(1)
 
         print(f"\n{BOLD}{GREEN}All services are running!{RESET}")
         print(f"{CYAN}Open your browser at: {BOLD}http://localhost:5173{RESET}")

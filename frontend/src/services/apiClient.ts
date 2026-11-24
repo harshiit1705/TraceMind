@@ -18,6 +18,8 @@ import {
   TelemetryOverviewData,
   ServiceTopologyData,
   CorrelationGroup,
+  CorrelationEvaluationRequest,
+  CorrelationEvaluationResponse,
   MultiSignalEvidenceSummary,
   RootCauseCandidate,
   ProjectItem,
@@ -754,6 +756,55 @@ class ApiClient {
       : '/api/v1/correlations';
 
     return this.request<CorrelationGroup[]>(endpoint, [MOCK_CORRELATION_GROUP]);
+  }
+
+  /**
+   * Triggers cross-service anomaly correlation evaluation and root-cause ranking.
+   * Endpoint: POST /api/v1/correlations/evaluate
+   */
+  public async correlateIncidents(
+    payload: CorrelationEvaluationRequest
+  ): Promise<ApiResponse<CorrelationEvaluationResponse>> {
+    let targetProjectId = payload.project_id;
+
+    if (!targetProjectId && this.dataMode === 'api') {
+      try {
+        const projRes = await this.getProjects();
+        if (projRes.data && projRes.data.length > 0) {
+          const preferred = projRes.data.find(
+            (p) => p.slug === 'core-ecommerce' || p.name.toLowerCase().includes('core e-commerce')
+          );
+          targetProjectId = preferred ? preferred.id : projRes.data[0].id;
+        }
+      } catch {
+        // Fall back to attempting call without project_id if project lookup fails
+      }
+    }
+
+    const finalPayload: CorrelationEvaluationRequest = {
+      ...payload,
+      project_id: targetProjectId || 'mock-project-id',
+    };
+
+    const mockResponse: CorrelationEvaluationResponse = {
+      project_id: finalPayload.project_id,
+      evaluated_at: new Date().toISOString(),
+      time_window_start: finalPayload.start_time || new Date(Date.now() - 300000).toISOString(),
+      time_window_end: finalPayload.end_time || new Date().toISOString(),
+      total_anomalies_evaluated: 3,
+      correlation_groups_count: 1,
+      groups: [MOCK_CORRELATION_GROUP],
+    };
+
+    return this.request<CorrelationEvaluationResponse>(
+      '/api/v1/correlations/evaluate',
+      mockResponse,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalPayload),
+      }
+    );
   }
 
   public async getCorrelationById(id: string): Promise<ApiResponse<CorrelationGroup>> {

@@ -104,6 +104,52 @@ def test_evaluate_correlations_api(client: TestClient, db_session: Session):
     assert cands[0]["rank"] == 1
 
 
+
+def test_evaluation_response_counts_unclustered_anomalies_and_reports_actual_window(
+    client: TestClient, db_session: Session
+):
+    """Anomaly counts and time bounds must remain accurate when no group is formed."""
+    proj = db_session.query(Project).filter_by(slug="core-ecommerce").first()
+    payment_svc = db_session.query(Service).filter_by(project_id=proj.id, slug="payment-service").first()
+
+    event_time = datetime(2026, 11, 24, 9, 0, 0, tzinfo=timezone.utc)
+    event = AnomalyEvent(
+        id=uuid4(),
+        project_id=proj.id,
+        service_id=payment_svc.id,
+        metric_name="error_rate",
+        observed_value=100.0,
+        expected_baseline=0.0,
+        deviation_pct=None,
+        severity="critical",
+        detection_method="rolling_average",
+        occurred_at=event_time,
+        status="open",
+        explanation="Single isolated payment error-rate anomaly",
+    )
+    db_session.add(event)
+    db_session.commit()
+
+    start_time = event_time - timedelta(minutes=2)
+    end_time = event_time + timedelta(minutes=2)
+    response = client.post(
+        "/api/v1/correlations/evaluate",
+        json={
+            "project_id": str(proj.id),
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "config": {"min_events_per_group": 2},
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_anomalies_evaluated"] == 1
+    assert data["correlation_groups_count"] == 0
+    assert data["groups"] == []
+    assert datetime.fromisoformat(data["time_window_start"].replace("Z", "+00:00")) == start_time
+    assert datetime.fromisoformat(data["time_window_end"].replace("Z", "+00:00")) == end_time
+
 def test_empty_anomaly_window_returns_zero_groups(client: TestClient, db_session: Session):
     """When no anomaly events exist in the time window, evaluate returns 0 groups cleanly."""
     proj = db_session.query(Project).filter_by(slug="core-ecommerce").first()

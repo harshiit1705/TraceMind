@@ -10,6 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+JSONType = sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql")
+
 # revision identifiers, used by Alembic.
 revision: str = '0003_service_dependencies_and_correlation'
 down_revision: Union[str, None] = '0002_anomaly_persistence'
@@ -82,7 +84,7 @@ def upgrade() -> None:
         sa.Column('topological_score', sa.Float(), server_default='0.0', nullable=False),
         sa.Column('blast_radius_score', sa.Float(), server_default='0.0', nullable=False),
         sa.Column('severity_score', sa.Float(), server_default='0.0', nullable=False),
-        sa.Column('reasons_json', postgresql.JSONB(astext_type=sa.Text()), server_default='{}', nullable=False),
+        sa.Column('reasons_json', JSONType, server_default='{}', nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.UniqueConstraint('correlation_group_id', 'service_id', name='uq_correlation_group_service_candidate'),

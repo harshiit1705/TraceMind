@@ -1,115 +1,20 @@
-# TraceMind Backend Developer Setup Guide
+# TraceMind local setup
 
-This guide covers running and testing the TraceMind backend service locally and with Docker.
+The canonical setup and recruiter demonstration instructions are maintained in the repository root [`README.md`](../README.md).
 
----
+This note is retained as a short pointer so older links do not lead to outdated setup commands.
 
-## 1. Prerequisites
-- **Python**: 3.11+ (Python 3.11, 3.12, or 3.13)
-- **Node.js**: 20+ (for frontend)
-- **Docker & Docker Compose**: (optional, for running local PostgreSQL)
+## Quick checklist
 
----
+1. Install Python 3.11+, Node.js 22.6+, npm, and Docker Desktop.
+2. Start the PostgreSQL service with `docker compose up -d db`.
+3. Copy `backend/.env.example` to `backend/.env` and configure `DATABASE_URL`.
+4. Create `backend/.venv` and install `backend/requirements.txt`.
+5. Copy `frontend/.env.example` to `frontend/.env` and run `npm ci` in `frontend/`.
+6. Start the full local environment with `scripts/start_demo.bat`.
 
-## 2. Local Environment Setup
+The launcher applies Alembic migrations before starting the backend and checks database readiness plus all local service health endpoints.
 
-### A. Create and Activate Virtual Environment
-```bash
-# From workspace root
-cd backend
+## Tests
 
-# Create virtual environment
-python -m venv .venv
-
-# Activate virtual environment
-# On Windows (PowerShell):
-.venv\Scripts\Activate.ps1
-# On macOS / Linux:
-source .venv/bin/activate
-```
-
-### B. Install Python Dependencies
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### C. Configure Environment Variables
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
-
-Default local configuration:
-```env
-APP_NAME="TraceMind API"
-APP_VERSION="0.2.3a"
-ENVIRONMENT="development"
-DEBUG=true
-API_V1_PREFIX="/api/v1"
-DATABASE_URL="postgresql+psycopg2://tracemind:tracemind_secret@localhost:5432/tracemind_db"
-DEMO_MODE=true
-CORS_ORIGINS='["http://localhost:5173", "http://127.0.0.1:5173"]'
-```
-
----
-
-## 3. Database Setup & Migrations
-
-### Option A: Run PostgreSQL via Docker Compose
-Start PostgreSQL 16:
-```bash
-docker compose up -d db
-```
-
-### Option B: Run Alembic Migrations
-Apply database schema migrations:
-```bash
-cd backend
-alembic upgrade head
-```
-
-Roll back migrations:
-```bash
-alembic downgrade -1
-```
-
----
-
-## 4. Running the Backend Server
-Start the local development server with hot-reload:
-```bash
-cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-Once started, access:
-- **API Root**: `http://localhost:8000/`
-- **Interactive OpenAPI Docs**: `http://localhost:8000/docs`
-- **Health Probe**: `http://localhost:8000/api/v1/health`
-- **Readiness Probe**: `http://localhost:8000/api/v1/ready`
-
----
-
-## 5. Running the Hermetic Automated Test Suite
-The test suite runs against an isolated, in-memory SQLite database and requires zero external network or database connections.
-
-```bash
-# From workspace root
-$env:PYTHONPATH="backend"; $env:ENVIRONMENT="test"; $env:DATABASE_URL="sqlite:///:memory:"
-pytest backend/tests -v
-```
-
-Expected output:
-```text
-======================== 20 passed, 1 warning in 3.24s ========================
-```
-
----
-
-## 6. Full-Stack Docker Compose Deployment
-To run both the PostgreSQL database and the TraceMind FastAPI backend together:
-```bash
-docker compose up --build
-```
-This builds the container image defined in `backend/Dockerfile` and connects to the healthy PostgreSQL container.
-
+See the root README for the current backend, demo-microservice, and frontend test commands. PostgreSQL integration tests and live Gemini provider calls require their corresponding external services/configuration.
